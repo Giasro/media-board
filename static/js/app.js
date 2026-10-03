@@ -42,7 +42,7 @@
     blueMode: $('#blueMode'), blueLevel: $('#blueLevel'), blueLabel: $('#blueLabel'),
     zipGap: $('#zipInnerGap'), zipGapLabel: $('#zipInnerGapLabel'), zipAuto: $('#zipAutoCols'),
     autoPause: $('#autoPauseOffscreen'), autoCap: $('#autoCap'), autoUnload: $('#autoUnload'), maxConc: $('#maxConcurrent'),
-    forceRes: $('#forceRes'), optRate: $('#optRate'), optLoop: $('#optLoop'), optMute: $('#optMute'), optCache: $('#optCache'),
+    forceRes: $('#forceRes'), cacheMax: $('#cacheMax'), optRate: $('#optRate'), optLoop: $('#optLoop'), optMute: $('#optMute'), optCache: $('#optCache'),
     profileName: $('#profileName'), profileList: $('#profileList'),
     sessionName: $('#sessionName'), sessionList: $('#sessionList'), cacheInfo: $('#cacheInfo'),
   };
@@ -254,7 +254,7 @@
     autoPause: el.autoPause.checked, autoUnload: el.autoUnload.checked, autoCap: el.autoCap.checked,
     maxConcurrent: parseInt(el.maxConc.value, 10), lowPower: el.lowPower.checked,
     font: parseInt(el.fontRange.value, 10), ui: parseInt(el.uiRange.value, 10),
-    rate: G().rate, loop: G().loop, mute: G().mute, forceRes: el.forceRes.value, cache: el.optCache.checked,
+    rate: G().rate, loop: G().loop, mute: G().mute, forceRes: el.forceRes.value, cache: el.optCache.checked, cacheMax: el.cacheMax.value,
     resBadge: el.resBadge.checked, fps: el.fps.checked,
     night: el.nightMode.checked, nightLevel: parseInt(el.nightLevel.value, 10), blue: el.blueMode.checked, blueLevel: parseInt(el.blueLevel.value, 10),
   });
@@ -277,7 +277,7 @@
     el.fontRange.value = String(p.font || 90); setFont(p.font || 90);
     el.uiRange.value = String(p.ui || 100); setUi(p.ui || 100);
     el.optRate.value = String(p.rate || 1); el.optLoop.checked = p.loop !== false; el.optMute.checked = p.mute !== false;
-    el.forceRes.value = p.forceRes || 'free'; el.optCache.checked = p.cache !== false && !privEl.checked;
+    el.forceRes.value = p.forceRes || 'free'; if (p.cacheMax != null) el.cacheMax.value = String(p.cacheMax); el.optCache.checked = p.cache !== false && !privEl.checked;
     el.resBadge.checked = p.resBadge !== false; el.resBadge.dispatchEvent(new Event('change'));
     el.fps.checked = !!p.fps; el.fps.dispatchEvent(new Event('change'));
     el.nightMode.checked = !!p.night; el.nightLevel.value = String(p.nightLevel || 40); el.blueMode.checked = !!p.blue; el.blueLevel.value = String(p.blueLevel || 35); applyTint();
@@ -525,6 +525,40 @@
     const cache = await caches.open(CACHE_NAME);
     await cache.put(new Request(location.origin + key), new Response(file, { headers: { 'Content-Type': file.type || 'application/octet-stream' } })); // Blob 을 스트림으로 저장(메모리에 통째로 올리지 않음)
   }
+  // 캐시 보관 시도: 용량·크기 제한을 먼저 확인하고, 실패해도 재생에는 영향 없음
+  const skipNotes = { quota: 0, size: 0, read: 0, other: 0, lastMsg: '' }; let skipT = null;
+  function noteSkip(kind, msg) {
+    skipNotes[kind]++; if (msg) skipNotes.lastMsg = msg;
+    clearTimeout(skipT); skipT = setTimeout(() => {
+      const parts = [];
+      if (skipNotes.quota) parts.push(`저장 공간 부족 ${skipNotes.quota}개`);
+      if (skipNotes.size) parts.push(`'캐시 최대 파일 크기' 초과 ${skipNotes.size}개`);
+      if (skipNotes.read) parts.push(`원본 파일을 읽을 수 없음 ${skipNotes.read}개`);
+      if (skipNotes.other) parts.push(`기타 오류 ${skipNotes.other}개 (${skipNotes.lastMsg})`);
+      toast('캐시에 보관하지 않은 영상: ' + parts.join(' · ') + ' — 재생은 정상이고, 세션 복원 때만 원본 파일을 다시 선택하면 됩니다.', false, 7000);
+      skipNotes.quota = skipNotes.size = skipNotes.read = skipNotes.other = 0;
+    }, 1200);
+  }
+  function tryCache(c, file) {
+    if (!file || !el.optCache.checked || !cacheOK || isPrivate()) return;
+    c.cacheKey = cacheKeyFor(file);
+    c.cachePromise = (async () => {
+      const limitMB = parseInt(el.cacheMax.value, 10) || 0;
+      if (limitMB && file.size > limitMB * 1048576) { noteSkip('size'); return; }
+      try {
+        const est = await navigator.storage.estimate();
+        if (est.quota && est.quota - est.usage < file.size * 1.05 + 50 * 1048576) { noteSkip('quota'); return; }
+      } catch (_) { }
+      try { await cachePut(c.cacheKey, file); c.cached = true; refreshCacheInfo(); }
+      catch (err) {
+        c.cached = false;
+        const name = err && err.name || '';
+        if (name === 'QuotaExceededError') noteSkip('quota');
+        else if (name === 'NotReadableError' || name === 'NotFoundError') noteSkip('read');
+        else noteSkip('other', (name ? name + ': ' : '') + (err && err.message || err));
+      }
+    })();
+  }
   async function cacheGet(key) {
     if (!cacheOK) return null;
     const cache = await caches.open(CACHE_NAME), r = await cache.match(location.origin + key);
@@ -534,7 +568,7 @@
     try {
       if (!cacheOK) { el.cacheInfo.textContent = '캐시 사용 불가 (실행.bat 으로 http://localhost 에서 열어야 합니다)'; return; }
       const est = await navigator.storage.estimate();
-      el.cacheInfo.textContent = `브라우저 저장소 사용: ${(est.usage / 1048576).toFixed(0)}MB / 여유 ${(est.quota / 1073741824).toFixed(1)}GB`;
+      el.cacheInfo.textContent = `캐시 사용 ${(est.usage / 1073741824).toFixed(2)}GB · 남은 한도 ${((est.quota - est.usage) / 1073741824).toFixed(1)}GB (C: 드라이브 크롬 폴더에 저장)`;
     } catch (_) { el.cacheInfo.textContent = ''; }
   }
   $('#cacheClear').addEventListener('click', async () => {
@@ -567,10 +601,8 @@
 
       const done = () => {
         wireCard(c); applyProps(c, props); layout(); applyCardRes(c);
-        if (src.file && el.optCache.checked && cacheOK && !props.fromCache) {
-          c.cacheKey = cacheKeyFor(src.file);
-          c.cachePromise = cachePut(c.cacheKey, src.file).then(() => { c.cached = true; refreshCacheInfo(); }).catch(err => { c.cached = false; toast('캐시 저장 실패: ' + (err && err.message || err)); });
-        } else if (props.fromCache) { c.cacheKey = props.cacheKey; c.cached = true; }
+        if (props.fromCache) { c.cacheKey = props.cacheKey; c.cached = true; }
+        else if (src.file) tryCache(c, src.file);
         resolve(c);
       };
       if (isVideo) {
@@ -835,10 +867,8 @@
     card.addEventListener('click', () => { if (S.deleting) removeCard(c); });
     wireArrange(c); layout();
 
-    if (el.optCache.checked && cacheOK && !props.fromCache) {
-      c.cacheKey = cacheKeyFor(file);
-      c.cachePromise = cachePut(c.cacheKey, file).then(() => { c.cached = true; refreshCacheInfo(); }).catch(err => { toast('캐시 저장 실패: ' + (err && err.message || err)); });
-    } else if (props.fromCache) { c.cacheKey = props.cacheKey; c.cached = true; }
+    if (props.fromCache) { c.cacheKey = props.cacheKey; c.cached = true; }
+    else tryCache(c, file);
 
     const inner = $('.zip-inner', card), loading = $('.zip-loading', card);
     try {

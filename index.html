@@ -123,6 +123,8 @@
         <button id="sessionDel" class="btn warn">삭제</button>
       </div>
       <label class="chk"><input id="optCache" type="checkbox" checked /> 영상도 브라우저 캐시(Cache API)에 보관 — 세션 복원 시 파일 재선택 불필요</label>
+      <div class="row"><label>캐시에 넣을 최대 파일 크기
+        <select id="cacheMax"><option value="0">제한 없음</option><option value="500">500MB</option><option value="1024" selected>1GB</option><option value="2048">2GB</option><option value="4096">4GB</option></select></label></div>
       <div class="row">
         <button id="sessionExport" class="btn">JSON 내보내기</button>
         <label class="btn filebtn"><input id="sessionImport" type="file" accept=".json,application/json,video/*,image/*,.zip,.mkv" multiple hidden />JSON 가져오기</label>
