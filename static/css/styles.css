@@ -53,7 +53,9 @@ b{ font-weight:700; }
 @keyframes drift1{ to{ transform:translate(10vw,8vh) scale(1.12); } }
 @keyframes drift2{ to{ transform:translate(-8vw,12vh) scale(.92); } }
 @keyframes drift3{ to{ transform:translate(-6vw,-10vh) scale(1.08); } }
-body.low-power .blob, body.has-cards .blob{ animation-play-state:paused; }
+.blob{ transition:opacity .8s ease; }
+body.has-cards .blob{ opacity:0; animation-play-state:paused; } /* 영상을 추가하면 컬러 배경은 사라짐 */
+body.low-power .blob{ animation-play-state:paused; }
 @media (prefers-reduced-motion:reduce){ .blob{ animation:none; } }
 
 /* ---------- 상단 바 (유리) ---------- */

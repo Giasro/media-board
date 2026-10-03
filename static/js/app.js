@@ -49,7 +49,7 @@
 
   // ---------- 상태 ----------
   const S = {
-    mode: 'video', cols: 4, zipCols: 6, gap: 12, pad: 16, zoom: 1, skip: 5, skipRaw: 5,
+    mode: 'video', cols: 4, zipCols: 6, gap: 4, pad: 8, zoom: 1, skip: 5, skipRaw: 5,
     lowPower: false, showFPS: false, arranging: false, deleting: false,
     active: null, filter: 'none', theme: 'dark', accent: '#e50914',
   };
@@ -249,7 +249,7 @@
   }
   const snapshot = () => ({
     theme: S.theme, accent: S.accent, filter: S.filter, filterStrength: parseInt(el.filterStrength.value, 10),
-    zoom: parseInt(el.zoomRange.value, 10), gap: S.gap, pad: S.pad, zipGap: parseInt(el.zipGap.value, 10), skipRaw: S.skipRaw,
+    zoom: parseInt(el.zoomRange.value, 10), layoutVer: 2, gap: S.gap, pad: S.pad, zipGap: parseInt(el.zipGap.value, 10), skipRaw: S.skipRaw,
     cols: S.cols, zipCols: S.zipCols, zipAuto: el.zipAuto.checked, appMode: S.mode,
     autoPause: el.autoPause.checked, autoUnload: el.autoUnload.checked, autoCap: el.autoCap.checked,
     maxConcurrent: parseInt(el.maxConc.value, 10), lowPower: el.lowPower.checked,
@@ -264,8 +264,10 @@
     setFilter(p.filter || 'none');
     el.filterStrength.value = String(p.filterStrength || 100); setFilterStrength(p.filterStrength || 100);
     el.zoomRange.value = String(p.zoom || 100); setZoomLabel(p.zoom || 100); applyZoom(p.zoom || 100);
-    el.gapRange.value = String(p.gap ?? 12); setGap(p.gap ?? 12);
-    el.padRange.value = String(p.pad ?? 16); setPad(p.pad ?? 16);
+    const lv2 = p.layoutVer >= 2; // 예전 기본값(간격 12·패딩 16)으로 저장된 설정은 새 기본값으로
+    const gapV = lv2 ? (p.gap ?? 4) : 4, padV = lv2 ? (p.pad ?? 8) : 8;
+    el.gapRange.value = String(gapV); setGap(gapV);
+    el.padRange.value = String(padV); setPad(padV);
     el.zipGap.value = String(p.zipGap ?? 6); setZipGap(p.zipGap ?? 6);
     el.skipRange.value = String(p.skipRaw || 5); updateSkip();
     S.cols = clamp(p.cols || 4, 1, 8); S.zipCols = clamp(p.zipCols || 6, 2, 6); el.zipAuto.checked = p.zipAuto !== false;
@@ -551,7 +553,7 @@
       if (src.file) c.url = URL.createObjectURL(src.file); else { c.url = src.url; c.remote = true; }
       const g = G();
       c.rate = props.rate || g.rate; c.loopOn = props.loop ?? g.loop; c.muted = props.muted ?? g.mute;
-      c.span = props.span || 1; c.wantPlay = props.wantPlay !== false;
+      c.span = props.span || ((src.size || 0) >= 500 * 1048576 ? 2 : 1); c.wantPlay = props.wantPlay !== false;
       let m;
       if (isVideo) {
         m = document.createElement('video');
