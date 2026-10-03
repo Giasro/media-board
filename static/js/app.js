@@ -1,4 +1,4 @@
-// ================= Gv v14 — 영상 동시재생기 =================
+// ================= Gv v15 — 영상 동시재생기 (Media Board) =================
 // v12(Gv) + v5.15(videoboard) + GvUX2 요구사항을 하나로 합친 완전판.
 //  · 재생 스케줄러(동시 재생 상한 · 자동 조절 · 화면 밖 일시정지/메모리 해제)
 //  · 선택 카드에만 재생바/삭제 버튼, 첫 클릭=선택 / 더블클릭=재생·정지
@@ -77,6 +77,9 @@
     return el.zipAuto.checked ? clamp(n || 2, 2, 6) : clamp(S.zipCols, 2, 6);
   };
   const columnWidth = cols => (gridWrap.clientWidth - (cols - 1) * S.gap) / cols;
+  // 카드 크기는 0.5열 단위. 내부적으로 열 하나를 2칸으로 나눈 격자에 배치한다.
+  const unitWidth = cols => (gridWrap.clientWidth - (cols * 2 - 1) * S.gap) / (cols * 2);
+  const minUnits = cols => clamp(Math.ceil((140 + S.gap) / (unitWidth(cols) + S.gap)), 1, cols * 2);
   const zipViewportH = () => Math.max(260, window.innerHeight / S.zoom - 40);
 
   function layoutNow() {
@@ -86,19 +89,24 @@
     const columns = effCols();
     contentRoot.classList.toggle('onecol', S.mode !== 'zip' && columns === 1); // 1열 = 화면 폭 70%
     $$('.preset').forEach(b => b.classList.toggle('active', parseInt(b.dataset.cols, 10) === columns));
-    const cw = columnWidth(columns);
-    const heights = new Array(columns).fill(0);
+    const U = columns * 2, uw = unitWidth(columns), mu = minUnits(columns);
+    const heights = new Array(U).fill(0);
     for (const c of mine) {
-      let span = clamp(c.span || 1, 1, columns), w, h;
-      if (isZip(c)) { span = 1; w = Math.round(cw); h = Math.round(zipViewportH()); }
-      else { w = Math.round(span * cw + (span - 1) * S.gap); h = Math.max(120, Math.round(w / (c.aspect || 16 / 9))); }
-      let col = 0, best = Infinity;
-      for (let i = 0; i <= columns - span; i++) {
-        let y = 0; for (let k = i; k < i + span; k++) y = Math.max(y, heights[k]);
-        if (y < best) { best = y; col = i; }
+      let units, w, h;
+      if (isZip(c)) { units = 2; w = Math.round(2 * uw + S.gap); h = Math.round(zipViewportH()); }
+      else {
+        units = clamp(Math.round((c.span || 1) * 2), Math.min(mu, U), U);
+        w = Math.round(units * uw + (units - 1) * S.gap); h = Math.max(90, Math.round(w / (c.aspect || 16 / 9)));
       }
-      const x = Math.round(col * (cw + S.gap)), y = Math.round(best);
-      for (let k = col; k < col + span; k++) heights[k] = y + h + S.gap;
+      // 짝수 칸(1열, 2열 …) 카드는 열 경계에 맞춰서, 반 칸 크기 카드는 자유롭게 배치
+      const step = units % 2 === 0 ? 2 : 1;
+      let col = 0, best = Infinity;
+      for (let i = 0; i <= U - units; i += step) {
+        let y = 0; for (let k = i; k < i + units; k++) y = Math.max(y, heights[k]);
+        if (y < best - 0.5) { best = y; col = i; }
+      }
+      const x = Math.round(col * (uw + S.gap)), y = Math.round(best);
+      for (let k = col; k < col + units; k++) heights[k] = y + h + S.gap;
       c.rect = { x, y, w, h };
       c.el.style.width = w + 'px'; c.el.style.height = h + 'px';
       let tx = x, ty = y;
@@ -110,6 +118,7 @@
     // transform: scale 은 레이아웃 높이를 바꾸지 않으므로 스크롤 영역을 보정
     contentRoot.style.marginBottom = ((S.zoom - 1) * (totalH + 32)) + 'px';
     zgs.classList.toggle('has-zip', S.mode === 'zip' && mine.length > 0);
+    document.body.classList.toggle('has-cards', mine.length > 0); // 카드가 있으면 배경 애니메이션 정지(GPU 절약)
     reconcile();
   }
   let resizeT = null;
@@ -429,12 +438,18 @@
 
   // ================= 카드 =================
   const ICON = {
-    play: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z"/></svg>',
-    pause: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
-    vol: '<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6L7 10zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>',
-    mute: '<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6L7 10zM16 9l5 6M21 9l-5 6"/></svg>',
-    fs: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
-    more: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5.5" y="4" width="4.5" height="16" rx="1.2"/><rect x="14" y="4" width="4.5" height="16" rx="1.2"/></svg>',
+    vol: '<svg viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.4 18.4a9 9 0 0 0 0-12.8"/></svg>',
+    mute: '<svg viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>',
+    fs: '<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+    more: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>',
+    grow: '<svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
+    shrink: '<svg viewBox="0 0 24 24"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>',
+    trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    camera: '<svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+    repeat: '<svg viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+    x: '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
   };
   const FILTERS = [['', '전체 설정 따름'], ['none', '없음'], ['cinema', '시네마'], ['noir', '누아르'], ['vivid', '비비드'], ['texture', '텍스처'], ['pastel', '파스텔'], ['cool', '쿨톤'], ['warm', '웜톤'], ['hyperreal', '하이퍼리얼'], ['film', '필름'], ['mono', '흑백'], ['neon', '네온']];
 
@@ -442,7 +457,8 @@
     const card = document.createElement('article');
     card.className = 'card' + (kind === 'image' ? ' image-card' : '');
     card.innerHTML = `
-      <button class="btn-del-top" title="이 카드 삭제">🗑 삭제</button>
+      <button class="btn-del-top" title="이 카드 삭제">${ICON.trash}삭제</button>
+      <span class="size-tip"></span>
       <span class="badge-ab">A-B 반복</span>
       <span class="badge-res"></span>
       <div class="overlay">
@@ -454,20 +470,22 @@
           <button class="ob mutebtn vonly" title="음소거 (M)">${ICON.mute}</button>
           <button class="ob txt opt vonly ab-a" title="구간 시작 지점 (A)">A</button>
           <button class="ob txt opt vonly ab-b" title="구간 끝 지점 (B)">B</button>
-          <button class="ob txt opt vonly ab-on" title="A-B 구간 반복 켜기/끄기">⟲</button>
+          <button class="ob opt vonly ab-on" title="A-B 구간 반복 켜기/끄기">${ICON.repeat}</button>
+          <button class="ob sizebtn" title="크게 보기 / 원래 크기 (Z) — Ctrl+휠, +/- 로 0.5열씩">${ICON.grow}</button>
           <button class="ob gear" title="더 보기">${ICON.more}</button>
           <button class="ob fsbtn" title="전체화면 (F)">${ICON.fs}</button>
         </div>
         <div class="popover">
           <div class="prow vonly"><label>배속</label><select class="rate">${[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4].map(r => `<option value="${r}">${r}x</option>`).join('')}</select></div>
           <div class="prow vonly"><label>반복재생</label><input type="checkbox" class="loopChk"/></div>
+          <div class="prow"><label>카드 크기</label><span class="sizer"><button class="sz-dec" title="작게 (-)">−</button><span class="sv"></span><button class="sz-inc" title="크게 (+)">+</button></span></div>
           <div class="prow"><label>화면 채우기</label><select class="fit"><option value="contain">맞춤</option><option value="cover">꽉 채움</option></select></div>
           <div class="prow"><label>필터</label><select class="cfilter">${FILTERS.map(f => `<option value="${f[0]}">${f[1]}</option>`).join('')}</select></div>
           <div class="prow vonly"><label>PiP</label><input type="checkbox" class="pipCheck"/></div>
-          <div class="prow"><button class="pbtn capture">📸 현재 화면 캡쳐 (PNG)</button></div>
+          <div class="prow"><button class="pbtn capture">${ICON.camera}현재 화면 캡쳐 (PNG)</button></div>
         </div>
       </div>
-      <div class="resize-handle" title="드래그: 가로 칸 수 조절"></div>`;
+      <div class="resize-handle" title="드래그해서 크기 조절 (0.5열 단위)"></div>`;
     const c = { kind, name, el: card, span: 1, aspect: null, rect: null, near: false, wantPlay: true, muted: true, loopOn: true, rate: 1, ab: { a: null, b: null, on: false } };
     card._card = c;
     gridWrap.appendChild(card); cards.push(c);
@@ -587,6 +605,7 @@
     const q = s => $(s, c.el); if (!c.el.isConnected || !q('.rate')) return;
     q('.rate').value = String(c.rate); q('.loopChk').checked = !!c.loopOn; q('.fit').value = c.el.dataset.fit || 'contain'; q('.cfilter').value = c.el.dataset.cf || '';
     q('.mutebtn').innerHTML = c.muted ? ICON.mute : ICON.vol;
+    const sv = q('.sv'); if (sv) sv.textContent = fmtSpan(c.span || 1);
   }
   function setCardFilter(c, f) { if (f) c.el.dataset.cf = f; else delete c.el.dataset.cf; }
   function setFit(c, f) { c.el.dataset.fit = f === 'cover' ? 'cover' : 'contain'; }
@@ -626,6 +645,9 @@
     q('.btn-del-top').addEventListener('click', e => { stop(e); removeCard(c); });
     q('.fsbtn').addEventListener('click', async e => { stop(e); try { if (document.fullscreenElement) await document.exitFullscreen(); else await card.requestFullscreen(); } catch (_) { } });
     q('.fit').addEventListener('change', e => setFit(c, e.target.value));
+    q('.sizebtn').addEventListener('click', e => { stop(e); toggleMax(c); });
+    q('.sz-dec').addEventListener('click', e => { stop(e); setSpan(c, c.span - 0.5); });
+    q('.sz-inc').addEventListener('click', e => { stop(e); setSpan(c, c.span + 0.5); });
     q('.cfilter').addEventListener('change', e => setCardFilter(c, e.target.value));
     q('.overlay').addEventListener('click', stop); q('.overlay').addEventListener('dblclick', stop);
 
@@ -686,19 +708,58 @@
     reconcileNow();
   }
 
-  // ---------- 크기 조절 (가로 칸 수 스냅 — 다른 카드가 자연스럽게 밀림) ----------
+  // ---------- 카드 크기 조절 (재생 중에도 가능 · 0.5열 단위 · 다른 카드가 부드럽게 밀려남) ----------
+  const fmtSpan = v => (Number.isInteger(v) ? v : v.toFixed(1)) + '열';
+  function showSizeTip(c) {
+    const tip = $('.size-tip', c.el); if (!tip) return;
+    const cols = effCols();
+    tip.textContent = c.span >= cols ? '최대 · ' + fmtSpan(cols) : fmtSpan(c.span);
+    tip.classList.add('show'); clearTimeout(c._tipT); c._tipT = setTimeout(() => tip.classList.remove('show'), 900);
+    const sv = $('.sv', c.el); if (sv) sv.textContent = fmtSpan(c.span);
+    const sb = $('.sizebtn', c.el); if (sb) sb.innerHTML = c.span >= cols ? ICON.shrink : ICON.grow;
+  }
+  function setSpan(c, v, silent) {
+    if (isZip(c)) return;
+    const cols = effCols(), lo = minUnits(cols) / 2;
+    v = clamp(Math.round(v * 2) / 2, Math.min(lo, cols), cols);
+    if (v === c.span) { if (!silent) showSizeTip(c); return; }
+    c.span = v; layout(); if (!silent) showSizeTip(c);
+  }
+  function toggleMax(c) {
+    const cols = effCols();
+    if (c.span < cols) { c._prevSpan = c.span; setSpan(c, cols); }
+    else setSpan(c, c._prevSpan && c._prevSpan < cols ? c._prevSpan : 1);
+    if (c.span >= cols) setTimeout(() => c.el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 320);
+  }
   function wireResize(c) {
     const handle = $('.resize-handle', c.el); let st = null;
-    handle.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); handle.setPointerCapture(e.pointerId); st = { x: e.clientX, w: c.rect.w }; document.body.classList.add('no-anim'); document.body.style.userSelect = 'none'; });
+    handle.addEventListener('pointerdown', e => {
+      e.stopPropagation(); e.preventDefault(); handle.setPointerCapture(e.pointerId);
+      if (S.active !== c) setActive(c);
+      st = { x: e.clientX, y: e.clientY, w: c.rect.w, h: c.rect.h }; document.body.style.userSelect = 'none'; showSizeTip(c);
+    });
     handle.addEventListener('pointermove', e => {
       if (!st) return;
-      const cols = effCols(), newW = Math.max(120, st.w + (e.clientX - st.x) / S.zoom), cw = columnWidth(cols);
-      const span = clamp(Math.round((newW + S.gap) / (cw + S.gap)), 1, cols);
-      if (span !== c.span) { c.span = span; layoutNow(); }
+      const cols = effCols(), uw = unitWidth(cols), a = c.aspect || 16 / 9;
+      const dx = (e.clientX - st.x) / S.zoom, dy = (e.clientY - st.y) / S.zoom;
+      // 가로로 끌든 세로로 끌든(비율 환산) 더 크게 움직인 쪽을 따른다
+      const newW = st.w + (Math.abs(dx) >= Math.abs(dy * a) ? dx : dy * a);
+      setSpan(c, Math.round((newW + S.gap) / (uw + S.gap)) / 2);
     });
-    const end = () => { if (!st) return; st = null; document.body.style.userSelect = ''; setTimeout(() => document.body.classList.remove('no-anim'), 50); };
+    const end = () => { if (!st) return; st = null; document.body.style.userSelect = ''; };
     handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
+    handle.addEventListener('click', e => e.stopPropagation());
   }
+  // Ctrl + 휠 (또는 터치패드 핀치) = 마우스 아래 카드 크기 조절
+  let wheelAcc = 0, wheelCard = null;
+  window.addEventListener('wheel', e => {
+    if (!e.ctrlKey || S.mode !== 'video') return;
+    const c = e.target.closest?.('.card')?._card; if (!c) return;
+    e.preventDefault();
+    if (wheelCard !== c) { wheelAcc = 0; wheelCard = c; }
+    wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    if (Math.abs(wheelAcc) >= 60) { setSpan(c, c.span + (wheelAcc < 0 ? 0.5 : -0.5)); wheelAcc = 0; }
+  }, { passive: false });
 
   // ---------- 드래그로 순서 변경 (다른 카드가 부드럽게 밀려남) ----------
   function wireArrange(c) {
@@ -760,7 +821,7 @@
         <button class="zip-toggle equal" data-mode="equal">동일 속도</button>
         <button class="zip-toggle prop" data-mode="proportional">비율 모드</button>
         <span class="zip-name"></span>
-        <button class="zdel" title="삭제">✕</button>
+        <button class="zdel" title="삭제">${ICON.x}</button>
       </div>
       <div class="zip-inner"></div>
       <div class="zip-loading"><div style="width:60%"><div class="bar"><i></i></div><div style="margin-top:6px;text-align:center;"><span class="pct">0</span>%</div></div></div>`;
@@ -837,6 +898,7 @@
   }
   el.fileInput.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
   el.fileInputZip.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+  $('#fileInputHero').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
   $('#urlBtn').addEventListener('click', () => {
     const u = (prompt('영상/이미지 URL을 입력하세요 (mp4, webm, gif …)') || '').trim(); if (!u) return;
     const name = decodeURIComponent((u.split('?')[0].split('/').pop() || 'url')); const kind = IMG_EXT.test(name) ? 'image' : 'video';
@@ -981,6 +1043,10 @@
     else if ((e.key === 'b' || e.key === 'B') && S.active) setAB(S.active, 'b');
     else if ((e.key === 'f' || e.key === 'F') && S.active) { const p = S.active.el.requestFullscreen?.(); if (p && p.catch) p.catch(() => { }); }
     else if ((e.key === 'm' || e.key === 'M') && S.active) { setMuted(S.active, !S.active.muted); reconcile(); }
+    else if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') && S.active) { e.preventDefault(); setSpan(S.active, S.active.span + 0.5); }
+    else if ((e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') && S.active) { e.preventDefault(); setSpan(S.active, S.active.span - 0.5); }
+    else if ((e.code === 'Digit0' || e.code === 'Numpad0') && S.active) { e.preventDefault(); setSpan(S.active, 1); }
+    else if ((e.key === 'z' || e.key === 'Z') && S.active) toggleMax(S.active);
   });
   // 빈 곳 클릭 → 선택 해제 / 열린 팝오버 닫기
   contentRoot.addEventListener('click', e => { if (!e.target.closest('.card')) setActive(null); });

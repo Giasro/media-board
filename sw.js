@@ -1,7 +1,7 @@
 // Gv 서비스워커 — 앱 화면 파일만 저장해서 오프라인 실행/설치를 지원한다.
 // 영상·사진은 절대 여기서 다루지 않는다(사용자 파일은 브라우저 안에서 blob 으로만 재생).
-const SHELL = 'gv-shell-v14';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'static/css/styles.css', 'static/js/app.js', 'static/js/vendor/fflate.min.js', 'static/icons/icon-192.png', 'static/icons/icon-512.png'];
+const SHELL = 'gv-shell-v15';
+const FILES = ['./', 'index.html', 'manifest.webmanifest', 'static/css/styles.css', 'static/js/app.js', 'static/js/vendor/fflate.min.js', 'static/icons/icon-192.png', 'static/icons/icon-512.png', 'static/fonts/PretendardVariable.woff2'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
