@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gv — 영상 동시재생기</title>
+  <meta name="theme-color" content="#0a0a0b" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="static/icons/icon-192.png" />
+  <link rel="stylesheet" href="static/css/styles.css" />
+  <script defer src="static/js/vendor/fflate.min.js"></script>
+  <script defer src="static/js/app.js"></script>
+</head>
+<body>
+  <!-- 고정 아이콘: 메뉴(왼쪽 위) / 환경설정(오른쪽 위). 다시 누르면 닫힘 -->
+  <button id="menuBtn" class="fab fab-left" title="메뉴" aria-label="메뉴"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <button id="settingsBtn" class="fab fab-right" title="환경설정" aria-label="환경설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+
+  <header id="topbar" class="topbar">
+    <div class="brand"><span class="dot"></span>Gv</div>
+    <label class="tb-add" title="영상 / GIF / WEBP / 이미지 / ZIP 선택 — 창에 드래그&드롭도 가능">
+      <input id="fileInput" type="file" accept="video/*,image/*,application/zip,.zip,.mkv" multiple />
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>파일 추가</span>
+    </label>
+    <button id="urlBtn" class="tb-pill" title="URL로 영상 추가">URL</button>
+    <div class="seg" role="tablist">
+      <button class="mode-btn" data-mode="video">영상</button>
+      <button class="mode-btn" data-mode="zip">ZIP 사진</button>
+    </div>
+    <span id="privBadge" class="priv-badge hidden" title="프라이빗 모드: 캐시·자동저장·기록을 남기지 않습니다">🔒 프라이빗</span>
+    <button id="sessionQuick" class="tb-btn" title="세션 빠른 저장"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+    <button id="sessionOpen" class="tb-btn" title="세션 목록 열기"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg></button>
+  </header>
+
+  <!-- 왼쪽 서랍: 메뉴 -->
+  <aside id="menuPanel" class="panel left-panel" aria-hidden="true">
+    <div class="panel-head"><h2>메뉴</h2><button class="x-btn" data-close>✕</button></div>
+
+    <section class="panel-sec">
+      <h3>모드</h3>
+      <div class="seg wide"><button class="mode-btn" data-mode="video">영상 재생</button><button class="mode-btn" data-mode="zip">ZIP 사진</button></div>
+    </section>
+
+    <section class="panel-sec">
+      <h3>레이아웃 (열 개수)</h3>
+      <div class="cols-grid">
+        <button class="chip preset" data-cols="1" title="1열 = 화면 폭의 70%">1</button>
+        <button class="chip preset" data-cols="2">2</button>
+        <button class="chip preset" data-cols="3">3</button>
+        <button class="chip preset" data-cols="4">4</button>
+        <button class="chip preset" data-cols="5">5</button>
+        <button class="chip preset" data-cols="6">6</button>
+        <button class="chip preset only-video" data-cols="7">7</button>
+        <button class="chip preset only-video" data-cols="8">8</button>
+      </div>
+      <p class="muted">1열은 화면 폭의 70%로 가운데에 표시됩니다. ZIP 사진 모드는 2~6열 고정이며, 'ZIP 열 자동'을 켜면 ZIP 수만큼 열이 만들어집니다.</p>
+    </section>
+
+    <section class="panel-sec only-video">
+      <h3>전체 영상 위치 이동</h3>
+      <div class="grid grid-9" id="globalSkipGrid"></div>
+    </section>
+
+    <section class="panel-sec">
+      <h3>전체 제어</h3>
+      <div class="row">
+        <button id="playAll" class="btn">▶ 전체 재생</button>
+        <button id="pauseAll" class="btn">⏸ 전체 정지</button>
+      </div>
+      <div class="row"><button id="bulkDelete" class="btn warn">현재 모드 카드 모두 삭제</button></div>
+    </section>
+
+    <section class="panel-sec only-video">
+      <h3>재생 옵션 (전체)</h3>
+      <div class="row">
+        <label>배속
+          <select id="optRate">
+            <option>0.25</option><option>0.5</option><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option><option>1.75</option><option>2</option><option>3</option><option>4</option>
+          </select></label>
+        <label class="chk"><input id="optLoop" type="checkbox" checked /> 반복재생</label>
+        <label class="chk"><input id="optMute" type="checkbox" checked /> 음소거</label>
+      </div>
+    </section>
+
+    <section class="panel-sec zip-only hidden">
+      <h3>ZIP 사진</h3>
+      <label class="btn filebtn"><input id="fileInputZip" type="file" accept="application/zip,.zip" multiple hidden />ZIP 업로드</label>
+      <label class="chk"><input id="zipAutoCols" type="checkbox" checked /> ZIP 열 자동 (ZIP 수만큼, 2~6열)</label>
+      <div class="row"><label>내부 사진 간격</label><input id="zipInnerGap" type="range" min="0" max="24" step="1" value="6" /><span><b id="zipInnerGapLabel">6</b>px</span></div>
+      <p class="muted">ZIP 하나 = 세로 컬럼 하나. 컬럼은 각각 스크롤되고 페이지도 스크롤됩니다. 오른쪽 막대를 움직이거나 Alt+휠을 하면 모든 컬럼이 함께 스크롤됩니다.</p>
+    </section>
+
+    <section class="panel-sec">
+      <h3>스킵 (← / →)</h3>
+      <div class="row"><input id="skipRange" type="range" min="1" max="20" step="1" value="5" /><span><b id="skipLabel">5</b>초</span></div>
+      <p class="muted">← → 는 선택한 카드(없으면 전체) · 숫자/넘패드 1~9 = 10~90% 지점 · A / B = 구간반복 지점 · Space = 재생/정지 · Esc = 선택 해제</p>
+    </section>
+
+    <section class="panel-sec">
+      <h3>편집</h3>
+      <label class="chk"><input id="arrangeToggle" type="checkbox" /> 카드 위치 변경 (드래그&드롭)</label>
+      <label class="chk"><input id="deleteToggle" type="checkbox" /> 삭제 모드 (클릭하면 삭제 · 모든 영상 정지)</label>
+      <p class="muted">카드 크기는 선택한 카드의 오른쪽 아래 손잡이로 가로 칸 수를 바꿉니다.</p>
+    </section>
+
+    <section class="panel-sec" id="privacySec">
+      <h3>개인정보</h3>
+      <label class="chk"><input id="privateMode" type="checkbox" /> 프라이빗 모드 — 영상 캐시·자동 저장·세션 기록을 남기지 않음</label>
+      <div class="row"><button id="wipeAll" class="btn warn">남아 있는 기록 전부 지우기</button></div>
+      <p class="muted">영상 파일은 어떤 경우에도 인터넷으로 전송되지 않습니다(URL 추가 기능 제외). 이 옵션은 이 PC의 브라우저에 남는 흔적(영상 사본·파일 이름·세션 목록)을 막고 지웁니다.</p>
+    </section>
+
+    <section class="panel-sec" id="sessionSec">
+      <h3>세션 (세이브 파일)</h3>
+      <div class="row">
+        <input id="sessionName" class="text" placeholder="세션 이름" />
+        <button id="sessionSave" class="btn">저장</button>
+      </div>
+      <div class="row">
+        <select id="sessionList"></select>
+        <button id="sessionLoadBtn" class="btn">불러오기</button>
+        <button id="sessionDel" class="btn warn">삭제</button>
+      </div>
+      <label class="chk"><input id="optCache" type="checkbox" checked /> 영상도 브라우저 캐시(Cache API)에 보관 — 세션 복원 시 파일 재선택 불필요</label>
+      <div class="row">
+        <button id="sessionExport" class="btn">JSON 내보내기</button>
+        <label class="btn filebtn"><input id="sessionImport" type="file" accept=".json,application/json,video/*,image/*,.zip,.mkv" multiple hidden />JSON 가져오기</label>
+      </div>
+      <div class="row"><span id="cacheInfo" class="muted" style="margin:0">캐시 사용량 확인 중…</span><button id="cacheClear" class="btn warn">캐시 비우기</button></div>
+      <p class="muted">캐시에 없는 영상은 JSON 가져오기 때 원본 파일을 함께 선택하면 이름·크기로 자동 매칭합니다.</p>
+    </section>
+
+    <section class="panel-sec">
+      <h3>설정 프로파일</h3>
+      <div class="row">
+        <input id="profileName" class="text" placeholder="프로파일 이름" />
+        <button id="saveProfile" class="btn">저장</button>
+      </div>
+      <div class="row">
+        <select id="profileList"></select>
+        <button id="loadProfile" class="btn">불러오기</button>
+        <button id="deleteProfile" class="btn warn">삭제</button>
+      </div>
+    </section>
+
+    <section class="panel-sec only-video">
+      <h3>렉 완화 (성능)</h3>
+      <label class="chk"><input id="autoPauseOffscreen" type="checkbox" checked /> 화면 밖 카드 자동 일시정지 (가시영역 우선)</label>
+      <label class="chk"><input id="autoUnload" type="checkbox" checked /> Lazy loading — 화면 밖 카드 디코더·GIF 메모리 해제</label>
+      <label class="chk"><input id="autoCap" type="checkbox" checked /> 자동 상한 조절 (버벅이면 동시 재생 수를 줄임)</label>
+      <div class="row"><label>동시 재생 최대 <input id="maxConcurrent" type="number" min="1" max="64" value="12" class="num"> 개</label></div>
+      <p class="muted">4K·고용량이 많으면 낮추세요. 보이는 카드 중 선택한 카드·화면 중앙 카드가 우선 재생됩니다.</p>
+    </section>
+  </aside>
+
+  <!-- 오른쪽 서랍: 환경설정 -->
+  <aside id="settingsPanel" class="panel right-panel" aria-hidden="true">
+    <div class="panel-head"><h2>환경설정</h2><button class="x-btn" data-close>✕</button></div>
+
+    <section class="panel-sec">
+      <h3>테마</h3>
+      <div class="seg wide"><button class="theme-btn" data-theme="dark">다크</button><button class="theme-btn" data-theme="light">라이트</button></div>
+    </section>
+    <section class="panel-sec">
+      <h3>카드 간격</h3>
+      <div class="row"><input id="gapRange" type="range" min="0" max="36" step="1" value="12" /><span><b id="gapLabel">12</b>px</span></div>
+    </section>
+    <section class="panel-sec">
+      <h3>화면 패딩</h3>
+      <div class="row"><input id="padRange" type="range" min="0" max="48" step="1" value="16" /><span><b id="padLabel">16</b>px</span></div>
+    </section>
+    <section class="panel-sec">
+      <h3>포인트 색상 (RGB 테마)</h3>
+      <div class="chips" id="accentChips">
+        <button class="chip sw" data-color="#e50914" style="--sw:#e50914" title="와인 레드"></button>
+        <button class="chip sw" data-color="#9b1c31" style="--sw:#9b1c31" title="다크 와인"></button>
+        <button class="chip sw" data-color="#ff3b4a" style="--sw:#ff3b4a" title="레드"></button>
+        <button class="chip sw" data-color="#f97316" style="--sw:#f97316" title="오렌지"></button>
+        <button class="chip sw" data-color="#22c55e" style="--sw:#22c55e" title="그린"></button>
+        <button class="chip sw" data-color="#3b82f6" style="--sw:#3b82f6" title="블루"></button>
+        <button class="chip sw" data-color="#a855f7" style="--sw:#a855f7" title="퍼플"></button>
+        <input id="accentColor" type="color" value="#e50914" title="직접 선택" />
+      </div>
+    </section>
+    <section class="panel-sec">
+      <h3>눈 보호</h3>
+      <label class="chk"><input id="nightMode" type="checkbox" /> 나이트 모드 (화면 어둡게)</label>
+      <div class="row"><input id="nightLevel" type="range" min="10" max="90" step="5" value="40" /><span><b id="nightLabel">40</b>%</span></div>
+      <label class="chk"><input id="blueMode" type="checkbox" /> 블루라이트 차단 (따뜻한 색감)</label>
+      <div class="row"><input id="blueLevel" type="range" min="10" max="90" step="5" value="35" /><span><b id="blueLabel">35</b>%</span></div>
+    </section>
+    <section class="panel-sec">
+      <h3>전체 필터</h3>
+      <div id="filterChips" class="chips">
+        <button class="chip chip-filter active" data-filter="none">없음</button>
+        <button class="chip chip-filter" data-filter="cinema">시네마</button>
+        <button class="chip chip-filter" data-filter="noir">누아르</button>
+        <button class="chip chip-filter" data-filter="vivid">비비드</button>
+        <button class="chip chip-filter" data-filter="texture">텍스처</button>
+        <button class="chip chip-filter" data-filter="pastel">파스텔</button>
+        <button class="chip chip-filter" data-filter="cool">쿨톤</button>
+        <button class="chip chip-filter" data-filter="warm">웜톤</button>
+        <button class="chip chip-filter" data-filter="hyperreal">하이퍼리얼</button>
+        <button class="chip chip-filter" data-filter="film">필름</button>
+        <button class="chip chip-filter" data-filter="mono">흑백</button>
+        <button class="chip chip-filter" data-filter="neon">네온</button>
+      </div>
+      <div class="row"><label style="min-width:56px;">강도</label><input id="filterStrength" type="range" min="50" max="200" step="5" value="100" /><span id="filterStrengthLabel">100%</span></div>
+      <p class="muted">카드 하나만 바꾸려면 카드의 ⋯ 메뉴에서 개별 필터를 고르세요.</p>
+    </section>
+    <section class="panel-sec only-video">
+      <h3>해상도 강제 (캔버스 렌더 · 실험)</h3>
+      <select id="forceRes">
+        <option value="free">자유 (원본)</option>
+        <option value="720">720p</option>
+        <option value="1080">1080p</option>
+        <option value="2160">2160p</option>
+      </select>
+      <p class="muted">영상을 캔버스로 다시 그려 표시 해상도를 제한합니다. 디코딩 부하는 줄지 않으니 렉 완화용으로는 '동시 재생 최대'를 쓰세요.</p>
+    </section>
+    <section class="panel-sec">
+      <h3>페이지 확대/축소</h3>
+      <div class="row"><input id="zoomRange" type="range" min="75" max="150" step="5" value="100" /><span><b id="zoomLabel">100</b>%</span></div>
+      <p class="muted">슬라이더를 놓으면 적용됩니다.</p>
+    </section>
+    <section class="panel-sec">
+      <h3>글꼴 · UI 크기</h3>
+      <div class="row"><label style="min-width:56px;">글꼴</label><input id="fontRange" type="range" min="80" max="115" step="1" value="90" /><span><b id="fontLabel">90</b>%</span></div>
+      <div class="row"><label style="min-width:56px;">UI</label><input id="uiRange" type="range" min="85" max="115" step="1" value="100" /><span><b id="uiLabel">100</b>%</span></div>
+    </section>
+    <section class="panel-sec">
+      <h3>모드 · 표시</h3>
+      <label class="chk"><input id="lowPower" type="checkbox" /> 저전력/저사양 모드</label>
+      <label class="chk"><input id="fpsToggle" type="checkbox" /> FPS / 재생 수 표시</label>
+      <label class="chk"><input id="resBadge" type="checkbox" checked /> 선택 카드에 해상도(UHD) 표시</label>
+    </section>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <main class="content filter-none" id="contentRoot">
+    <section id="grid" class="grid-wrap"></section>
+    <div id="emptyHint" class="empty-hint">
+      <div class="eh-ico"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9l6 3-6 3z"/></svg></div>
+      <p><b>영상·GIF·WebP·ZIP</b> 파일을 여기로 끌어다 놓거나<br/>위의 <b>파일 추가</b>를 눌러 시작하세요.</p>
+    </div>
+  </main>
+
+  <div id="dropOverlay" class="drop-overlay hidden">파일을 놓으면 추가됩니다</div>
+  <div id="tintBlue" class="tint"></div><div id="tintNight" class="tint"></div>
+  <div id="toasts" class="toasts"></div>
+  <div id="zipGlobalScroll" class="zip-global-scroll" title="ZIP 동기 스크롤 (모든 컬럼)">
+    <div class="zgs-rail"><div class="zgs-thumb" id="zgsThumb"></div></div>
+  </div>
+  <div id="fpsHud" class="fps-hud hidden">FPS: 0</div>
+</body>
+</html>
