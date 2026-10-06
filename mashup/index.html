@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>짬뽕 믹서</title>
+<style>
+:root{--bg:#0b0709;--panel:#170d11;--line:#3a1722;--wine:#7a1530;--acc:#d13a66;--txt:#f0e6ea;--dim:#9a8088}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 "Pretendard","Malgun Gothic",sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:18px;color:var(--acc)}
+.hint{color:var(--dim);font-size:12px}
+main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.deck{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.deck.drag{border-color:var(--acc)}
+.top{display:flex;align-items:center;gap:8px}
+.top b{background:var(--wine);border-radius:6px;padding:2px 10px;font-size:16px}
+.name{flex:1;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button,.btn{background:#2a1019;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit}
+button:hover,.btn:hover{border-color:var(--acc)}
+button.on{background:var(--wine);border-color:var(--acc)}
+canvas{width:100%;height:80px;background:#0e080b;border-radius:6px;cursor:pointer;display:block}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row label{color:var(--dim);font-size:12px}
+input[type=number]{width:74px;background:#0e080b;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit}
+input[type=range]{accent-color:var(--acc);flex:1;min-width:90px}
+.eq{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.eq div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--dim)}
+.eq input[type=range]{writing-mode:vertical-lr;direction:rtl;height:90px;flex:none;min-width:0;width:24px}
+.time{font-variant-numeric:tabular-nums;color:var(--dim);min-width:92px}
+footer{margin:0 14px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+select{background:#0e080b;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit}
+details.pro{border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:8px}
+details.pro[open]{display:flex}
+details.pro summary{cursor:pointer;color:var(--acc);font-weight:600}
+canvas.eqc{height:200px;cursor:crosshair;touch-action:none;margin:8px 0}
+table.bands{border-collapse:collapse;width:100%;font-size:12px}
+table.bands th{color:var(--dim);font-weight:400;text-align:left;padding:2px 4px}
+table.bands td{padding:2px 4px}
+table.bands input{width:78px}
+.cross{display:flex;align-items:center;gap:10px}
+.cross input{flex:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>짬뽕 믹서</h1>
+  <span class="hint">음원 파일을 각 덱에 드래그하거나 "파일 열기"를 누르세요. 파일은 이 브라우저 안에서만 처리돼요.</span>
+</header>
+<main id="decks"></main>
+<footer>
+  <div class="cross"><b>A</b><input type="range" id="xf" min="0" max="1" step="0.01" value="0.5"><b>B</b><button id="xfc">중앙</button></div>
+  <div class="row"><label>마스터 볼륨</label><input type="range" id="mv" min="0" max="1.5" step="0.01" value="1">
+    <button id="both">A+B 동시 재생</button><button id="stopAll">전체 정지</button>
+    <button id="rec">● 녹음</button><a id="dl" class="btn" style="display:none" download="mashup.webm">녹음 파일 저장</a></div>
+</footer>
+
+<template id="tpl">
+  <div class="top"><b class="id"></b><span class="name">파일 없음</span>
+    <label class="btn">파일 열기<input type="file" accept="audio/*,video/*" hidden></label></div>
+  <canvas width="1000" height="160"></canvas>
+  <div class="row">
+    <button class="play">▶ 재생</button><button class="tostart">⏮</button>
+    <button class="nm">−20ms</button><button class="np">+20ms</button>
+    <button class="cueset">Cue 저장</button><button class="cuego">Cue로</button>
+    <span class="time">0:00 / 0:00</span>
+  </div>
+  <div class="row">
+    <label>원곡 BPM</label><input type="number" class="obpm" step="0.1" min="30" max="300">
+    <button class="half">÷2</button><button class="dbl">×2</button><button class="tap">탭</button><button class="auto">자동 감지</button>
+    <label>현재 BPM</label><input type="number" class="cbpm" step="0.1" min="20" max="400">
+    <button class="sync">상대 덱에 싱크</button>
+  </div>
+  <div class="row"><label>템포</label><input type="range" class="rate" min="0.5" max="1.5" step="0.001" value="1"><span class="rv">100%</span>
+    <label><input type="checkbox" class="keep" checked> 음정 유지</label></div>
+  <div class="row"><label>키</label><button class="km">−1</button><input type="range" class="key" min="-12" max="12" step="0.5" value="0" title="반음 단위, 템포와 독립 (더블클릭 초기화)"><button class="kp">+1</button>
+    <span class="kv">0</span><button class="kr">초기화</button></div>
+  <div class="row"><label>곡 키</label><select class="ksel"></select><button class="kauto">키 자동 감지</button><span class="kconf hint"></span>
+    <button class="kmatch">상대 덱 키에 맞추기</button></div>
+  <div class="row"><label>볼륨</label><input type="range" class="vol" min="0" max="1.5" step="0.01" value="1">
+    <label>필터</label><input type="range" class="filt" min="-1" max="1" step="0.01" value="0" title="왼쪽: 로우패스 / 오른쪽: 하이패스 (더블클릭 초기화)"></div>
+  <div class="eq">
+    <div><input type="range" class="e0" min="-24" max="12" step="0.5" value="0"><span>저음</span><button class="k0">킬</button></div>
+    <div><input type="range" class="e1" min="-24" max="12" step="0.5" value="0"><span>중음</span><button class="k1">킬</button></div>
+    <div><input type="range" class="e2" min="-24" max="12" step="0.5" value="0"><span>고음</span><button class="k2">킬</button></div>
+  </div>
+  <details class="pro"><summary>정밀 EQ (파라메트릭 8밴드 + 스펙트럼)</summary>
+    <canvas class="eqc" width="1000" height="260"></canvas>
+    <div class="hint">점을 끌어서 주파수·게인 조절 / 마우스 휠로 Q(폭) 조절 / 더블클릭으로 게인 초기화. 뒤의 스펙트럼은 EQ를 거친 소리예요.</div>
+    <div class="row"><select class="preset"></select><button class="eqreset">EQ 초기화</button>
+      <label>HPF 기울기</label><select class="hps"><option value="12">12dB/oct</option><option value="24">24dB/oct</option></select>
+      <label>LPF 기울기</label><select class="lps"><option value="12">12dB/oct</option><option value="24">24dB/oct</option></select></div>
+    <table class="bands"></table>
+  </details>
+</template>
+
+<script>
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const master = ctx.createGain();
+const recDest = ctx.createMediaStreamDestination();
+// 마스터 리미터: 두 곡을 합칠 때 터지는(클리핑) 것을 방지
+const limiter = ctx.createDynamicsCompressor();
+limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = .003; limiter.release.value = .1;
+master.connect(limiter); limiter.connect(ctx.destination); limiter.connect(recDest);
+const decks = [];
+const DEFAULT_BANDS = [
+  {n:'HPF', type:'highpass', f:20, g:0, q:.71}, {n:'저음 셸프', type:'lowshelf', f:80, g:0, q:.71},
+  {n:'밴드 1', type:'peaking', f:200, g:0, q:1}, {n:'밴드 2', type:'peaking', f:800, g:0, q:1},
+  {n:'밴드 3', type:'peaking', f:2500, g:0, q:1}, {n:'밴드 4', type:'peaking', f:6000, g:0, q:1},
+  {n:'고음 셸프', type:'highshelf', f:10000, g:0, q:.71}, {n:'LPF', type:'lowpass', f:20000, g:0, q:.71}];
+const PRESETS = {
+  '평탄': {},
+  '베이스 컷 (베이스 스왑용)': {0:{f:150}},
+  '저음 부스트': {1:{f:90, g:6}},
+  '보컬 자리 비우기': {3:{f:1000, g:-6, q:.8}, 4:{f:3000, g:-4, q:.9}},
+  '보컬 강조': {0:{f:100}, 4:{f:3000, g:4}},
+  '밝게': {5:{g:2}, 6:{g:5}},
+  '전화기': {0:{f:400}, 7:{f:3500}},
+  '먹먹하게': {6:{g:-4}, 7:{f:3000}}};
+const KEY_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const KS_MAJ = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KS_MIN = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+function corr(a, b){
+  const n = a.length, ma = a.reduce((s,v) => s+v, 0)/n, mb = b.reduce((s,v) => s+v, 0)/n;
+  let sab = 0, saa = 0, sbb = 0;
+  for (let i = 0; i < n; i++){ const x = a[i]-ma, y = b[i]-mb; sab += x*y; saa += x*x; sbb += y*y; }
+  return sab / Math.sqrt(saa * sbb || 1);
+}
+function fft(re, im){
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++){
+    let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j){ [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1){
+    const ang = -2*Math.PI/len, wr = Math.cos(ang), wi = Math.sin(ang), h = len >> 1;
+    for (let i = 0; i < n; i += len){
+      let cr = 1, ci = 0;
+      for (let j = 0; j < h; j++){
+        const a = i + j, b = a + h, tr = re[b]*cr - im[b]*ci, ti = re[b]*ci + im[b]*cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const t = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = t;
+      }
+    }
+  }
+}
+const fmt = s => isFinite(s) ? Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0') : '0:00';
+
+class Deck {
+  constructor(id){
+    this.id = id;
+    const root = this.root = document.createElement('section');
+    root.className = 'deck';
+    root.append(document.getElementById('tpl').content.cloneNode(true));
+    document.getElementById('decks').append(root);
+    this.$ = s => root.querySelector(s);
+    this.$('.id').textContent = id;
+    this.audio = new Audio(); this.audio.preload = 'auto';
+    this.rate = 1; this.cue = 0; this.buf = null; this.wave = null; this.url = null;
+    // 오디오 체인: 소스 → 저/중/고 EQ → 필터 → 게인 → 마스터
+    const src = ctx.createMediaElementSource(this.audio);
+    this.eq = [['lowshelf',200],['peaking',1000],['highshelf',4000]].map(([t,f]) => {
+      const n = ctx.createBiquadFilter(); n.type = t; n.frequency.value = f; if (t === 'peaking') n.Q.value = .7; return n; });
+    this.filter = ctx.createBiquadFilter(); this.filter.type = 'lowpass'; this.filter.frequency.value = 22000;
+    this.gain = ctx.createGain();
+    const chain = [src];
+    if (shiftReady){
+      this.shift = new AudioWorkletNode(ctx, 'pitch-shifter', {outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit'});
+      chain.push(this.shift);
+    }
+    // 정밀 EQ: HPF(+2단) → 저음셸프 → 피킹 4개 → 고음셸프 → LPF(+2단)
+    this.bands = DEFAULT_BANDS.map(b => ({...b}));
+    this.pn = this.bands.map(b => { const n = ctx.createBiquadFilter(); n.type = b.type; return n; });
+    this.hp2 = ctx.createBiquadFilter(); this.lp2 = ctx.createBiquadFilter();
+    this.slope = {hp: 12, lp: 12};
+    const pro = [this.pn[0], this.hp2, ...this.pn.slice(1, 7), this.pn[7], this.lp2];
+    this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 4096; this.analyser.smoothingTimeConstant = .75;
+    this.spec = new Uint8Array(this.analyser.frequencyBinCount);
+    [...chain, ...this.eq, ...pro, this.filter, this.gain, master].reduce((a,b) => (a.connect(b), b));
+    this.filter.connect(this.analyser);
+    this.keyIdx = -1; this.curve = null; this.drag = null;
+    this.applyBands();
+    this.kill = [false,false,false];
+    this.bind();
+  }
+  other(){ return decks.find(d => d !== this); }
+  bind(){
+    const $ = this.$, a = this.audio;
+    $('input[type=file]').onchange = e => e.target.files[0] && this.load(e.target.files[0]);
+    this.root.ondragover = e => { e.preventDefault(); this.root.classList.add('drag'); };
+    this.root.ondragleave = () => this.root.classList.remove('drag');
+    this.root.ondrop = e => { e.preventDefault(); this.root.classList.remove('drag'); e.dataTransfer.files[0] && this.load(e.dataTransfer.files[0]); };
+    $('.play').onclick = () => this.toggle();
+    $('.tostart').onclick = () => a.currentTime = 0;
+    $('.nm').onclick = () => a.currentTime = Math.max(0, a.currentTime - .02);
+    $('.np').onclick = () => a.currentTime += .02;
+    $('.cueset').onclick = () => this.cue = a.currentTime;
+    $('.cuego').onclick = () => a.currentTime = this.cue;
+    $('canvas').onclick = e => { const r = e.target.getBoundingClientRect(); if (a.duration) a.currentTime = (e.clientX - r.left) / r.width * a.duration; };
+    $('.obpm').onchange = () => this.setBpm(parseFloat($('.cbpm').value) || this.orig());
+    $('.cbpm').onchange = () => this.setBpm(parseFloat($('.cbpm').value));
+    $('.half').onclick = () => this.setOrig(this.orig() / 2);
+    $('.dbl').onclick = () => this.setOrig(this.orig() * 2);
+    $('.auto').onclick = () => this.detect();
+    $('.sync').onclick = () => { const o = this.other(); if (o) this.setBpm(parseFloat(o.$('.cbpm').value)); };
+    let taps = [];
+    $('.tap').onclick = () => {
+      const t = performance.now(); if (taps.length && t - taps.at(-1) > 2000) taps = [];
+      taps.push(t); taps = taps.slice(-8);
+      if (taps.length > 2) this.setOrig((taps.length - 1) * 60000 / (taps.at(-1) - taps[0]) * this.rate);
+    };
+    $('.rate').oninput = e => this.setRate(+e.target.value);
+    $('.keep').onchange = e => this.applyPitch();
+    $('.key').oninput = e => this.setKey(+e.target.value);
+    $('.key').ondblclick = () => this.setKey(0);
+    $('.kr').onclick = () => this.setKey(0);
+    $('.km').onclick = () => this.setKey(+$('.key').value - 1);
+    $('.kp').onclick = () => this.setKey(+$('.key').value + 1);
+    if (!this.shift) this.$('.key').closest('.row').style.opacity = .4;
+    $('.vol').oninput = () => this.xfade();
+    $('.filt').oninput = e => this.setFilter(+e.target.value);
+    $('.filt').ondblclick = e => { e.target.value = 0; this.setFilter(0); };
+    [0,1,2].forEach(i => {
+      $('.e'+i).oninput = () => this.setEq(i);
+      $('.e'+i).ondblclick = e => { e.target.value = 0; this.setEq(i); };
+      $('.k'+i).onclick = () => { this.kill[i] = !this.kill[i]; $('.k'+i).classList.toggle('on', this.kill[i]); this.setEq(i); };
+    });
+    this.applyPitch();
+    this.bindEq();
+    this.bindKey();
+  }
+  // ---------- 키 감지 / 맞추기 ----------
+  bindKey(){
+    const sel = this.$('.ksel');
+    sel.innerHTML = '<option value="-1">미감지</option>' +
+      KEY_NAMES.map((n,i) => `<option value="${i}">${n} 메이저</option>`).join('') +
+      KEY_NAMES.map((n,i) => `<option value="${i+12}">${n} 마이너</option>`).join('');
+    this.$('.kauto').onclick = () => this.detectKey();
+    this.$('.kmatch').onclick = () => this.matchKey();
+  }
+  detectKey(){
+    if (!this.buf) return;
+    const ch = this.buf.getChannelData(0), D = 4, sr = this.buf.sampleRate / D, N = 8192, hop = 4096;
+    const len = Math.min(ch.length, this.buf.sampleRate * 90), st = Math.max(0, Math.floor((ch.length - len) / 2));
+    const m = Math.floor(len / D), x = new Float32Array(m);
+    for (let i = 0; i < m; i++){ let s = 0; for (let j = 0; j < D; j++) s += ch[st + i*D + j]; x[i] = s / D; }
+    const hann = new Float64Array(N); for (let i = 0; i < N; i++) hann[i] = .5 - .5*Math.cos(2*Math.PI*i/(N-1));
+    const k0 = Math.ceil(100 / (sr/N)), k1 = Math.floor(2000 / (sr/N)), pc = new Int8Array(k1 + 1);
+    for (let k = k0; k <= k1; k++) pc[k] = (((Math.round(12 * Math.log2(k * sr / N / 440)) + 9) % 12) + 12) % 12;
+    const chroma = new Float64Array(12), re = new Float64Array(N), im = new Float64Array(N);
+    for (let s = 0; s + N <= m; s += hop){
+      for (let i = 0; i < N; i++){ re[i] = x[s+i] * hann[i]; im[i] = 0; }
+      fft(re, im);
+      for (let k = k0; k <= k1; k++) chroma[pc[k]] += Math.sqrt(Math.hypot(re[k], im[k]));
+    }
+    const mean = chroma.reduce((a,b) => a+b, 0) / 12;
+    if (!(mean > 0)) { this.$('.kconf').textContent = '키를 찾지 못했어요'; return; }
+    let best = -2, bestK = -1;
+    for (let k = 0; k < 24; k++){
+      const prof = k < 12 ? KS_MAJ : KS_MIN, r = k % 12;
+      const a = Array.from({length: 12}, (_, i) => chroma[(r + i) % 12]);
+      const c = corr(a, prof);
+      if (c > best){ best = c; bestK = k; }
+    }
+    this.$('.ksel').value = bestK;
+    this.$('.kconf').textContent = `신뢰도 ${best.toFixed(2)} (틀리면 직접 선택)`;
+  }
+  // 상대 덱의 (키 + 현재 이동량)에 맞춰 이 덱의 키 이동량을 계산. 메이저/마이너가 다르면 관계조(나란한조)로 맞춤.
+  matchKey(){
+    const o = this.other(), mine = +this.$('.ksel').value, theirs = o ? +o.$('.ksel').value : -1;
+    if (mine < 0 || theirs < 0){ this.$('.kconf').textContent = '두 덱 모두 키가 필요해요 (자동 감지 또는 직접 선택)'; return; }
+    const maj = k => k < 12 ? k : (k - 12 + 3) % 12;
+    const rs = d => d.$('.keep').checked ? 0 : Math.round(12 * Math.log2(d.rate));
+    const oshift = Math.round(+o.$('.key').value) + rs(o);
+    let s = (((maj(theirs) + oshift - maj(mine) - rs(this)) % 12) + 12) % 12;
+    if (s > 6) s -= 12;
+    this.setKey(s);
+    const note = (mine < 12) !== (theirs < 12) ? ' · 메이저/마이너가 달라 관계조로 맞춤' : '';
+    this.$('.kconf').textContent = `${s > 0 ? '+' : ''}${s}키 적용${note}`;
+  }
+  // ---------- 정밀 EQ ----------
+  bindEq(){
+    const $ = this.$, tbl = $('.bands');
+    tbl.innerHTML = '<tr><th>#</th><th>밴드</th><th>주파수(Hz)</th><th>게인(dB)</th><th>Q</th></tr>' +
+      this.bands.map((b,i) => `<tr><td>${i+1}</td><td>${b.n}</td>
+        <td><input type="number" class="bf" data-i="${i}" min="20" max="20000" step="1"></td>
+        <td><input type="number" class="bg" data-i="${i}" min="-18" max="18" step="0.5"></td>
+        <td><input type="number" class="bq" data-i="${i}" min="0.1" max="18" step="0.1"></td></tr>`).join('');
+    const upd = (e, k, lo, hi) => { const i = +e.target.dataset.i; const v = parseFloat(e.target.value);
+      if (isFinite(v)) this.bands[i][k] = Math.min(hi, Math.max(lo, v)); this.applyBand(i); };
+    tbl.querySelectorAll('.bf').forEach(el => el.onchange = e => upd(e, 'f', 20, 20000));
+    tbl.querySelectorAll('.bg').forEach(el => el.onchange = e => upd(e, 'g', -18, 18));
+    tbl.querySelectorAll('.bq').forEach(el => el.onchange = e => upd(e, 'q', .1, 18));
+    const ps = $('.preset');
+    ps.innerHTML = '<option value="">프리셋 선택…</option>' + Object.keys(PRESETS).map(n => `<option>${n}</option>`).join('');
+    ps.onchange = () => { if (ps.value) this.applyPreset(ps.value); };
+    $('.eqreset').onclick = () => { ps.value = ''; this.applyPreset('평탄'); };
+    $('.hps').onchange = e => { this.slope.hp = +e.target.value; this.applyBand(0); };
+    $('.lps').onchange = e => { this.slope.lp = +e.target.value; this.applyBand(7); };
+    const cv = $('.eqc'), W = cv.width, H = cv.height;
+    const pt = e => { const r = cv.getBoundingClientRect(); return {x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H, s: W / r.width}; };
+    const nearest = (p, max) => { let bi = null, bd = max * p.s;
+      this.bands.forEach((b,i) => { const h = this.handle(i, W, H), d = Math.hypot(h.x - p.x, h.y - p.y); if (d < bd){ bd = d; bi = i; } });
+      return bi; };
+    cv.onpointerdown = e => { const i = nearest(pt(e), 22); if (i != null){ this.drag = i; cv.setPointerCapture(e.pointerId); } };
+    cv.onpointermove = e => {
+      if (this.drag == null) return;
+      const p = pt(e), b = this.bands[this.drag];
+      b.f = Math.min(20000, Math.max(20, 20 * Math.pow(1000, p.x / W)));
+      if (b.type !== 'highpass' && b.type !== 'lowpass') b.g = Math.min(18, Math.max(-18, Math.round((H/2 - p.y) / (H/2) * 18 * 10) / 10));
+      this.applyBand(this.drag);
+    };
+    cv.onpointerup = cv.onpointercancel = () => this.drag = null;
+    cv.onwheel = e => { const i = nearest(pt(e), 60); if (i == null) return; e.preventDefault();
+      const b = this.bands[i]; b.q = Math.min(18, Math.max(.1, b.q * Math.exp(-e.deltaY * .0015))); this.applyBand(i); };
+    cv.ondblclick = e => { const i = nearest(pt(e), 22); if (i != null){ this.bands[i].g = 0; this.applyBand(i); } };
+    this.applyBands();
+  }
+  handle(i, W, H){
+    const b = this.bands[i], g = (b.type === 'highpass' || b.type === 'lowpass') ? 0 : b.g;
+    return {x: W * Math.log(b.f / 20) / Math.log(1000), y: H/2 - g / 18 * (H/2)};
+  }
+  applyBand(i){
+    const b = this.bands[i], n = this.pn[i];
+    n.frequency.value = b.f; n.Q.value = b.q;
+    if (b.type !== 'highpass' && b.type !== 'lowpass') n.gain.value = b.g;
+    if (i === 0){ this.hp2.frequency.value = b.f; this.hp2.Q.value = b.q; this.hp2.type = this.slope.hp === 24 ? 'highpass' : 'allpass'; }
+    if (i === 7){ this.lp2.frequency.value = b.f; this.lp2.Q.value = b.q; this.lp2.type = this.slope.lp === 24 ? 'lowpass' : 'allpass'; }
+    this.curve = null;
+    const t = this.$('.bands'); if (!t || !t.querySelector('.bf')) return;
+    const set = (c, v) => { const el = t.querySelector(`.${c}[data-i="${i}"]`); if (el && document.activeElement !== el) el.value = v; };
+    set('bf', Math.round(b.f)); set('bg', b.g); set('bq', +b.q.toFixed(2));
+    const noGain = b.type === 'highpass' || b.type === 'lowpass', noQ = b.type.endsWith('shelf');
+    t.querySelector(`.bg[data-i="${i}"]`).disabled = noGain; t.querySelector(`.bq[data-i="${i}"]`).disabled = noQ;
+  }
+  applyBands(){ this.bands.forEach((_, i) => this.applyBand(i)); }
+  applyPreset(name){
+    this.bands = DEFAULT_BANDS.map(b => ({...b}));
+    for (const [i, o] of Object.entries(PRESETS[name] || {})) Object.assign(this.bands[i], o);
+    this.applyBands();
+  }
+  computeCurve(W){
+    const n = 300, fr = new Float32Array(n), mag = new Float32Array(n), ph = new Float32Array(n), db = new Float32Array(n);
+    for (let i = 0; i < n; i++) fr[i] = 20 * Math.pow(1000, i / (n - 1));
+    for (const node of [...this.pn, this.hp2, this.lp2]){
+      node.getFrequencyResponse(fr, mag, ph);
+      for (let i = 0; i < n; i++) db[i] += 20 * Math.log10(Math.max(mag[i], 1e-6));
+    }
+    this.curve = db;
+  }
+  drawEq(){
+    if (!this.$('.pro').open) return;
+    const cv = this.$('.eqc'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
+    g.clearRect(0, 0, W, H);
+    const fx = f => W * Math.log(f / 20) / Math.log(1000), dy = d => H/2 - d / 18 * (H/2);
+    g.font = '18px sans-serif'; g.lineWidth = 1; g.strokeStyle = '#2a1520'; g.fillStyle = '#7a6068';
+    [50,100,200,500,1000,2000,5000,10000].forEach(f => { g.beginPath(); g.moveTo(fx(f), 0); g.lineTo(fx(f), H); g.stroke(); g.fillText(f >= 1000 ? f/1000 + 'k' : f, fx(f) + 3, H - 5); });
+    [-12,-6,0,6,12].forEach(d => { g.strokeStyle = d ? '#2a1520' : '#4a2230'; g.beginPath(); g.moveTo(0, dy(d)); g.lineTo(W, dy(d)); g.stroke(); g.fillText((d > 0 ? '+' : '') + d + 'dB', 4, dy(d) - 3); });
+    // 스펙트럼
+    this.analyser.getByteFrequencyData(this.spec);
+    const nyq = ctx.sampleRate / 2, bins = this.spec.length;
+    g.beginPath(); g.moveTo(0, H);
+    for (let x = 0; x <= W; x += 2){ const f = 20 * Math.pow(1000, x / W), v = this.spec[Math.min(bins - 1, Math.round(f / nyq * bins))] / 255; g.lineTo(x, H - v * H * .92); }
+    g.lineTo(W, H); g.closePath(); g.fillStyle = 'rgba(122,21,48,.55)'; g.fill();
+    // EQ 곡선
+    if (!this.curve) this.computeCurve(W);
+    g.beginPath(); g.strokeStyle = '#fff'; g.lineWidth = 2.5;
+    this.curve.forEach((d, i) => { const x = W * i / (this.curve.length - 1), y = Math.min(H, Math.max(0, dy(d))); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+    // 핸들
+    this.bands.forEach((b, i) => { const h = this.handle(i, W, H);
+      g.beginPath(); g.arc(h.x, h.y, 11, 0, 7); g.fillStyle = this.drag === i ? '#ffcf4d' : '#d13a66'; g.fill();
+      g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.fillText(i + 1, h.x, h.y + 5); g.textAlign = 'left'; });
+  }
+  orig(){ return parseFloat(this.$('.obpm').value) || 0; }
+  async load(file){
+    if (this.url) URL.revokeObjectURL(this.url);
+    this.url = URL.createObjectURL(file);
+    this.audio.src = this.url;
+    this.$('.name').textContent = file.name;
+    this.$('.rate').value = 1; this.rate = 1; this.audio.playbackRate = 1; this.$('.rv').textContent = '100%';
+    this.$('.play').textContent = '▶ 재생'; this.cue = 0;
+    this.buf = null; this.wave = null; this.setKey(0);
+    this.$('.ksel').value = -1; this.$('.kconf').textContent = '';
+    try {
+      this.buf = await ctx.decodeAudioData(await file.arrayBuffer());
+      this.drawWave();
+      this.detect();
+      this.detectKey();
+    } catch(e){ this.$('.name').textContent = file.name + ' (분석 실패: 재생은 가능)'; }
+  }
+  toggle(){
+    ctx.resume();
+    if (this.audio.paused){ this.audio.play(); this.$('.play').textContent = '⏸ 일시정지'; }
+    else { this.audio.pause(); this.$('.play').textContent = '▶ 재생'; }
+  }
+  setOrig(v){
+    if (!(v > 0)) return;
+    const cur = parseFloat(this.$('.cbpm').value);
+    this.$('.obpm').value = +v.toFixed(2);
+    this.setBpm(cur > 0 && this.rate !== 1 ? cur : v);
+  }
+  setBpm(bpm){
+    const o = this.orig(); if (!o || !(bpm > 0)) return;
+    this.setRate(bpm / o);
+  }
+  setRate(r){
+    this.rate = Math.min(4, Math.max(.25, r));
+    this.audio.playbackRate = this.rate;
+    this.$('.rate').value = this.rate;
+    this.$('.rv').textContent = Math.round(this.rate * 100) + '%';
+    const o = this.orig(); if (o) this.$('.cbpm').value = +(o * this.rate).toFixed(2);
+  }
+  setKey(st){
+    st = Math.max(-12, Math.min(12, st));
+    this.$('.key').value = st;
+    this.$('.kv').textContent = (st > 0 ? '+' : '') + st;
+    if (this.shift) this.shift.parameters.get('pitch').value = Math.pow(2, st / 12);
+  }
+  applyPitch(){ this.audio.preservesPitch = this.audio.mozPreservesPitch = this.audio.webkitPreservesPitch = this.$('.keep').checked; }
+  setEq(i){ this.eq[i].gain.value = this.kill[i] ? -60 : +this.$('.e'+i).value; }
+  setFilter(v){
+    const f = this.filter;
+    if (Math.abs(v) < .02){ f.type = 'lowpass'; f.frequency.value = 22000; return; }
+    f.type = v < 0 ? 'lowpass' : 'highpass';
+    f.frequency.value = v < 0 ? 22000 * Math.pow(60/22000, -v) : 20 * Math.pow(8000/20, v);
+  }
+  xfade(){
+    const x = +document.getElementById('xf').value;
+    const c = this.id === 'A' ? Math.min(1, 2*(1-x)) : Math.min(1, 2*x);
+    this.gain.gain.value = c * +this.$('.vol').value;
+  }
+  drawWave(){
+    const ch = this.buf.getChannelData(0), W = 1000, H = 160, step = Math.floor(ch.length / W);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'); g.fillStyle = '#d13a66';
+    for (let x = 0; x < W; x++){
+      let m = 0; for (let i = x*step; i < (x+1)*step; i += 16) m = Math.max(m, Math.abs(ch[i]));
+      g.fillRect(x, H/2 - m*H/2, 1, Math.max(1, m*H));
+    }
+    this.wave = c;
+  }
+  render(){
+    const cv = this.$('canvas'), g = cv.getContext('2d');
+    g.clearRect(0, 0, cv.width, cv.height);
+    if (this.wave) g.drawImage(this.wave, 0, 0);
+    const d = this.audio.duration;
+    if (d){
+      const x = this.audio.currentTime / d * cv.width;
+      g.fillStyle = '#fff'; g.fillRect(x, 0, 2, cv.height);
+      if (this.cue){ g.fillStyle = '#ffcf4d'; g.fillRect(this.cue / d * cv.width, 0, 2, cv.height); }
+    }
+    this.$('.time').textContent = fmt(this.audio.currentTime) + ' / ' + fmt(d);
+    if (this.audio.ended) this.$('.play').textContent = '▶ 재생';
+    this.drawEq();
+  }
+  // 저음 에너지 온셋 자기상관으로 BPM 추정 (85~175로 접어서 표시, ÷2 / ×2로 보정)
+  detect(){
+    if (!this.buf) return;
+    const sr = this.buf.sampleRate, ch = this.buf.getChannelData(0);
+    const len = Math.min(ch.length, sr * 90), start = Math.max(0, Math.floor((ch.length - len) / 2));
+    const hop = 512, n = Math.floor(len / hop), env = new Float32Array(n);
+    let lp = 0; const a = 1 - Math.exp(-2*Math.PI*150/sr);
+    for (let f = 0; f < n; f++){
+      let e = 0;
+      for (let i = 0; i < hop; i++){ lp += a * (ch[start + f*hop + i] - lp); e += lp*lp; }
+      env[f] = Math.sqrt(e / hop);
+    }
+    const on = new Float32Array(n);
+    for (let i = 1; i < n; i++) on[i] = Math.max(0, env[i] - env[i-1]);
+    const fr = sr / hop; let best = 0, bestBpm = 0;
+    for (let bpm = 85; bpm <= 175; bpm += .25){
+      const lag = 60 / bpm * fr; let s = 0;
+      for (const k of [1,2,4]){ // 박, 2박, 4박 간격 합산
+        const L = lag * k, li = Math.floor(L), fr2 = L - li;
+        for (let i = 0; i + li + 1 < n; i++) s += on[i] * (on[i+li] * (1-fr2) + on[i+li+1] * fr2);
+      }
+      if (s > best){ best = s; bestBpm = bpm; }
+    }
+    if (bestBpm){ this.$('.cbpm').value = ''; this.rate = 1; this.setOrig(Math.round(bestBpm * 2) / 2); this.setRate(1); }
+  }
+}
+
+// 키 조절: 템포와 독립적인 피치 시프터 (AudioWorklet, 두 탭 딜레이 + 크로스페이드 방식)
+const shifterSrc = `
+class PitchShifter extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'pitch', defaultValue:1, minValue:.25, maxValue:4, automationRate:'k-rate'}]; }
+  constructor(){ super(); this.L = 65536; this.buf = [new Float32Array(this.L), new Float32Array(this.L)]; this.w = 0; this.ph = 0; }
+  process(inputs, outputs, params){
+    const inp = inputs[0], out = outputs[0], p = params.pitch[0], L = this.L, M = L - 1;
+    const win = sampleRate * 0.05, n = out[0].length, step = (1 - p) / win;
+    for (let i = 0; i < n; i++){
+      const w = (this.w + i) & M;
+      for (let c = 0; c < 2; c++) this.buf[c][w] = inp[c] ? inp[c][i] : (inp[0] ? inp[0][i] : 0);
+      const ph2 = (this.ph + .5) % 1;
+      const g1 = Math.sin(Math.PI * this.ph) ** 2, g2 = 1 - g1;
+      const d1 = this.ph * win + 2, d2 = ph2 * win + 2;
+      for (let c = 0; c < 2; c++){
+        const b = this.buf[c];
+        const r = d => { const pos = w - d, i0 = Math.floor(pos), f = pos - i0; return b[i0 & M] * (1 - f) + b[(i0 + 1) & M] * f; };
+        out[c][i] = r(d1) * g1 + r(d2) * g2;
+      }
+      this.ph += step; this.ph -= Math.floor(this.ph);
+    }
+    this.w = (this.w + n) & M;
+    return true;
+  }
+}
+registerProcessor('pitch-shifter', PitchShifter);`;
+let shiftReady = false;
+(async () => {
+  try {
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([shifterSrc], {type: 'text/javascript'})));
+    shiftReady = true;
+  } catch(e){ console.warn('키 조절 사용 불가', e); }
+  start();
+})();
+
+const xf = document.getElementById('xf');
+const xfade = () => decks.forEach(d => d.xfade());
+function start(){
+  decks.push(new Deck('A'), new Deck('B'));
+  xfade();
+}
+xf.oninput = xfade;
+document.getElementById('xfc').onclick = () => { xf.value = .5; xfade(); };
+document.getElementById('mv').oninput = e => master.gain.value = +e.target.value;
+document.getElementById('both').onclick = () => { ctx.resume(); decks.forEach(d => { if (d.audio.paused && d.audio.src) d.toggle(); }); };
+document.getElementById('stopAll').onclick = () => decks.forEach(d => { if (!d.audio.paused) d.toggle(); });
+
+let rec = null, chunks = [];
+const recBtn = document.getElementById('rec'), dl = document.getElementById('dl');
+recBtn.onclick = () => {
+  if (rec){ rec.stop(); return; }
+  ctx.resume(); chunks = []; dl.style.display = 'none';
+  rec = new MediaRecorder(recDest.stream);
+  rec.ondataavailable = e => chunks.push(e.data);
+  rec.onstop = () => { dl.href = URL.createObjectURL(new Blob(chunks, {type: rec.mimeType})); dl.style.display = ''; rec = null; recBtn.textContent = '● 녹음'; recBtn.classList.remove('on'); };
+  rec.start(); recBtn.textContent = '■ 녹음 중지'; recBtn.classList.add('on');
+};
+
+(function loop(){ decks.forEach(d => d.render()); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
