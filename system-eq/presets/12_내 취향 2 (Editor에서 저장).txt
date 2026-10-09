@@ -1,0 +1,7 @@
+# My taste 2 (saved from Editor 2026-10-09)
+Preamp: -8.3 dB
+Filter: ON PK Fc 2992.47 Hz Gain 15.9 dB BW Oct 0.7742
+Filter: ON LS 12.6727 dB Fc 11272.8 Hz Gain 14 dB
+Filter: ON PK Fc 74.31 Hz Gain 19.5 dB BW Oct 0.9702
+Filter: ON PK Fc 188.81 Hz Gain 12 dB Q 3.1831
+GraphicEQ: 25 -2; 40 10.8; 63 7.6; 100 0.2; 160 -5; 250 -1; 400 3.4; 630 1; 1000 3.8; 1600 9.8; 2500 -6; 4000 2.8; 6300 2.6; 10000 6.8; 16000 6.8
