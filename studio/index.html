@@ -12,6 +12,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.35 "Pretendard",
 button,.btn{background:#2a1019;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer;font:inherit}
 button:hover,.btn:hover{border-color:var(--acc)}
 button.on{background:var(--wine);border-color:var(--acc)}
+button.big{background:var(--wine);border-color:var(--acc);font-weight:600}
 input[type=number],select{background:#0e080b;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font:inherit}
 input[type=number]{width:64px}
 input[type=range]{accent-color:var(--acc);min-width:0}
@@ -29,29 +30,35 @@ header h1{margin:0;font-size:16px;color:var(--acc)}
 .body{flex:1;display:flex;min-height:0}
 aside{width:230px;border-right:1px solid var(--line);background:var(--panel);overflow:auto;flex:none}
 .trk{display:grid;grid-template-columns:1fr auto auto;gap:4px 6px;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;border-left:4px solid transparent}
-.trk.sel{background:var(--panel2);border-left-color:var(--acc)}
+.trk.sel{background:var(--panel2)}
 .trk .nm{font-weight:600}
 .trk input[type=range]{grid-column:1/-1;width:100%}
 .trk button{padding:1px 7px}
 main{flex:1;min-width:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
 .card h3{margin:0 0 8px;font-size:13px;color:var(--acc)}
+details.card>summary{cursor:pointer;color:var(--acc);font-weight:600;font-size:13px}
+details.card[open]>summary{margin-bottom:8px}
 .ed{display:flex;gap:0}
-.lanes{flex:none;width:300px}
+.lanes{flex:none;width:392px}
 .lane{height:34px;display:flex;align-items:center;gap:4px;border-bottom:1px solid #20101a}
-.lane .ln{width:84px;text-align:left;padding:2px 6px;overflow:hidden;white-space:nowrap;font-size:12px}
+.lane .ln{width:88px;text-align:left;padding:2px 6px;overflow:hidden;white-space:nowrap;font-size:12px}
 .lane input[type=range]{width:46px}
+.lane .btn,.lane button{padding:1px 6px}
 .scroll{overflow-x:auto;flex:1;min-width:0}
 .inner{position:relative}
 canvas{display:block}
 .ph{position:absolute;top:0;bottom:0;width:2px;background:var(--hi);pointer-events:none;display:none}
 .params{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px}
+.params .hd{grid-column:1/-1;color:var(--acc);font-size:12px;border-bottom:1px solid var(--line);margin-top:6px;padding-bottom:2px}
 .sl{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;gap:6px}
 .sl .lb{color:var(--dim);font-size:12px}
 .sl .val{text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 .row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.row+.row{margin-top:8px}
 footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
 #keys{border-right:1px solid var(--line)}
+.chord{font-size:15px;color:var(--hi);font-weight:600}
 @media(max-width:800px){.body{flex-direction:column}aside{width:auto;display:flex;overflow-x:auto}.trk{min-width:170px}}
 </style>
 </head>
@@ -72,7 +79,9 @@ footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 12px
 <div class="body">
   <aside id="tracks"></aside>
   <main>
+    <details class="card" id="composer" open></details>
     <div class="card" id="editor"></div>
+    <details class="card" id="auto" open></details>
     <div class="card" id="sound"></div>
     <div class="card" id="channel"></div>
   </main>
@@ -100,6 +109,7 @@ function h(tag, attrs = {}, ...kids){
   return e;
 }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rnd = () => Math.random(), pick = a => a[Math.floor(rnd() * a.length)];
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const noteName = m => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
 const isBlack = m => [1,3,6,8,10].includes(m % 12);
@@ -107,89 +117,141 @@ const SCALES = {'자연 단음계':[0,2,3,5,7,8,10], '장음계':[0,2,4,5,7,9,11
   '펜타토닉 마이너':[0,3,5,7,10], '펜타토닉 메이저':[0,2,4,7,9], '블루스':[0,3,5,6,7,10], '크로매틱 (제한 없음)':[0,1,2,3,4,5,6,7,8,9,10,11]};
 const LANES = [['킥','kick'],['스네어','snare'],['클랩','clap'],['클로즈 햇','hatC'],['오픈 햇','hatO'],['림','rim'],['탐/퍼커션','perc']];
 const MAXSTEPS = 64, CELL = 26, LANE_H = 34, RH = 16, ROWS = 36;
+const T = {DR:0, BS:1, PL:2, LD:3, PD:4, FX:5, SM:6};
+
+// =====================================================================
+//  드럼 킷 (합성) / 신스 프리셋 / 장르
+// =====================================================================
+const KITS = {
+  'DnB':          {kick:{f0:190,f1:46,tf:.10,dec:.45,drv:0,clk:.25}, snare:{tone:190,tdec:.14,nf:1500,ndec:.22,body:.55}, clap:{f:1500,dec:.18}, hatC:{f:7500,dec:.045}, hatO:{f:7000,dec:.28}, perc:{f:220,dec:.22}, rim:{f:1700}},
+  '하우스':        {kick:{f0:150,f1:50,tf:.06,dec:.38,drv:.35,clk:.2}, snare:{tone:200,tdec:.12,nf:2200,ndec:.14,body:.35}, clap:{f:1200,dec:.22}, hatC:{f:8500,dec:.04}, hatO:{f:7500,dec:.22}, perc:{f:260,dec:.15}, rim:{f:1900}},
+  '프로그레시브':  {kick:{f0:140,f1:45,tf:.07,dec:.42,drv:.5,clk:.3}, snare:{tone:180,tdec:.15,nf:1800,ndec:.2,body:.45}, clap:{f:1000,dec:.26}, hatC:{f:8000,dec:.05}, hatO:{f:7000,dec:.3}, perc:{f:200,dec:.18}, rim:{f:1700}},
+  '딥':            {kick:{f0:120,f1:42,tf:.09,dec:.5,drv:.15,clk:.1}, snare:{tone:170,tdec:.1,nf:2500,ndec:.12,body:.3}, clap:{f:900,dec:.2}, hatC:{f:9000,dec:.035}, hatO:{f:8000,dec:.18}, perc:{f:300,dec:.12}, rim:{f:2100}}};
+const SYN_DEF = {osc:1, wave:'sawtooth', uni:1, spread:0, width:.6, sub:0, wave2:'off', o2:0, l2:.5, det2:8, noise:0, ftype:'lowpass', cut:2000, res:1, envAmt:0, kt:0, fdec:.3,
+  lfoTarget:'cut', lfoShape:'sine', lfoRate:2, lfoDepth:0, a:.01, d:.3, s:.7, r:.3, gain:.3};
+const mkSyn = o => ({...SYN_DEF, ...o});
+const SYN_PRESETS = {
+  '리스 베이스 (DnB)': mkSyn({uni:3, spread:22, sub:.5, cut:420, res:4, envAmt:1, fdec:.4, lfoRate:.35, lfoDepth:600, a:.005, d:.2, s:.9, r:.15, gain:.45}),
+  '서브 베이스': mkSyn({wave:'sine', cut:400, res:.7, a:.005, d:.1, s:1, r:.08, gain:.7}),
+  '프로그 롤링 베이스': mkSyn({uni:2, spread:8, sub:.6, cut:380, res:2.5, envAmt:1.8, fdec:.22, a:.003, d:.22, s:.55, r:.1, gain:.5}),
+  '딥 하우스 베이스': mkSyn({sub:.8, cut:260, res:1.5, envAmt:1.2, fdec:.3, a:.004, d:.3, s:.5, r:.15, gain:.5}),
+  '프로그 플럭': mkSyn({uni:3, spread:10, width:.7, wave2:'square', l2:.4, cut:1400, res:3.5, envAmt:3, fdec:.16, a:.002, d:.2, s:0, r:.12, gain:.3}),
+  '스탭 리드': mkSyn({uni:5, spread:18, cut:2500, res:3, envAmt:2.5, fdec:.25, a:.003, d:.25, s:.35, r:.2, gain:.3}),
+  '슈퍼쏘 리드': mkSyn({uni:7, spread:38, width:1, wave2:'sawtooth', o2:-1, l2:.3, det2:10, cut:6500, res:.8, envAmt:.6, fdec:.5, kt:.3, lfoTarget:'pitch', lfoRate:5.5, lfoDepth:120, a:.01, d:.5, s:.65, r:.6, gain:.22}),
+  '슈퍼쏘 코드 스탭': mkSyn({uni:6, spread:26, width:1, cut:3600, res:1.5, envAmt:2, fdec:.2, a:.003, d:.28, s:.15, r:.25, gain:.22}),
+  '소프트 패드': mkSyn({uni:5, spread:12, cut:1800, res:.8, fdec:.5, lfoRate:.2, lfoDepth:300, a:.6, d:.8, s:.7, r:1.4, gain:.2}),
+  '와이드 패드': mkSyn({uni:6, spread:18, width:1, wave2:'triangle', o2:1, l2:.3, cut:2200, res:.7, lfoRate:.15, lfoDepth:500, a:1.1, d:1, s:.75, r:2.2, gain:.17}),
+  '플럭': mkSyn({wave:'square', uni:2, spread:8, cut:900, res:5, envAmt:3.5, fdec:.18, a:.002, d:.18, s:0, r:.1, gain:.3}),
+  '8비트 리드': mkSyn({wave:'square', cut:9000, res:.5, lfoTarget:'pitch', lfoRate:6, lfoDepth:60, a:.002, d:.1, s:.8, r:.08, gain:.25}),
+  '라이저 (빌드업)': mkSyn({osc:0, noise:1, cut:14000, res:1.5, envAmt:-5, fdec:6, a:3, d:3, s:1, r:.3, gain:.4}),
+  '임팩트 / 붐': mkSyn({wave:'sine', sub:.5, noise:.5, cut:900, a:.002, d:1.4, s:0, r:1.2, gain:.6})};
+const defCh = () => ({pan:0, hpf:20, ls:0, m1f:300, m1g:0, m1q:1, m2f:2500, m2g:0, m2q:1, hs:0, lpf:20000, dly:0, rev:0, duck:0,
+  cth:0, cratio:1, catt:.01, crel:.15, cmk:0, drive:0, chor:0, gate:0, gatePat:0});
+const GATE_PATS = [
+  {n:'8분 스타카토', p:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]}, {n:'16분 트랜스', p:[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1]},
+  {n:'오프비트', p:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0]}, {n:'롤링', p:[1,.3,.6,.3,1,.3,.6,.3,1,.3,.6,.3,1,.3,.6,.3]}];
+const GENRES = {
+  '프로그레시브 하우스': {bpm:126, style:'house', kit:'프로그레시브', bass:'rolling', swing:0, master:{glue:.35, revSec:2.8, dlyDiv:.75, dlyFb:.4},
+    syn:['', '프로그 롤링 베이스', '프로그 플럭', '슈퍼쏘 리드', '와이드 패드', '라이저 (빌드업)'], vol:[.9, .8, .5, .5, .55, .5, .8],
+    ch:[{cth:-12, cratio:3, cmk:2}, {duck:.8, cth:-16, cratio:3, cmk:3, hpf:30, drive:.15}, {dly:.3, rev:.25, duck:.4, hpf:180}, {dly:.25, rev:.4, duck:.45, hpf:200, chor:.3},
+      {rev:.45, duck:.7, hpf:160, chor:.2}, {rev:.3}, {}]},
+  '하우스': {bpm:124, style:'house', kit:'하우스', bass:'offbeat', swing:8, master:{glue:.3, revSec:2, dlyDiv:.75, dlyFb:.3},
+    syn:['', '딥 하우스 베이스', '프로그 플럭', '슈퍼쏘 코드 스탭', '소프트 패드', '라이저 (빌드업)'], vol:[.9, .8, .5, .5, .5, .5, .8],
+    ch:[{cth:-12, cratio:3, cmk:2}, {duck:.7, cth:-16, cratio:3, cmk:3, hpf:30}, {dly:.25, rev:.2, duck:.4, hpf:180}, {rev:.3, duck:.5, hpf:200}, {rev:.35, duck:.6, hpf:160}, {rev:.3}, {}]},
+  '딥 하우스': {bpm:120, style:'house', kit:'딥', bass:'sync', swing:18, master:{glue:.3, revSec:2.4, dlyDiv:.75, dlyFb:.35},
+    syn:['', '딥 하우스 베이스', '플럭', '슈퍼쏘 코드 스탭', '소프트 패드', '라이저 (빌드업)'], vol:[.85, .8, .5, .45, .55, .45, .8],
+    ch:[{cth:-12, cratio:2.5, cmk:2}, {duck:.6, cth:-16, cratio:3, cmk:3, hpf:30}, {dly:.3, rev:.3, duck:.3, hpf:200}, {rev:.35, duck:.4, hpf:250, chor:.35}, {rev:.45, duck:.5, hpf:160, chor:.3}, {rev:.3}, {}]},
+  '드럼앤베이스': {bpm:174, style:'dnb', kit:'DnB', bass:'dnb', swing:0, master:{glue:.3, revSec:1.6, dlyDiv:.75, dlyFb:.3},
+    syn:['', '리스 베이스 (DnB)', '스탭 리드', '슈퍼쏘 코드 스탭', '소프트 패드', '라이저 (빌드업)'], vol:[.9, .8, .5, .45, .5, .5, .8],
+    ch:[{cth:-12, cratio:3, cmk:2}, {duck:.5, hpf:30}, {dly:.25, rev:.2, duck:.3, hpf:200}, {rev:.3, duck:.4, hpf:200}, {rev:.4, duck:.5, hpf:160}, {rev:.3}, {}]}};
+const MOODS = {'어둡게 (단조)':'자연 단음계', '밝게 (장조)':'장음계', '몽환 (도리안)':'도리안'};
+const PROGS = {
+  '자연 단음계': [[0,5,2,6], [0,6,5,6], [0,3,5,4], [0,2,6,5], [0,5,3,6]],
+  '장음계':      [[0,4,5,3], [5,3,0,4], [0,5,3,4], [0,2,5,4], [0,3,4,3]],
+  '도리안':      [[0,3,0,6], [0,1,3,0], [0,6,3,0], [0,3,6,3]]};
+const ROLES = {intro:'인트로', build:'빌드업', drop:'드롭', break:'브레이크다운'};
 
 // =====================================================================
 //  상태
 // =====================================================================
-const SYN_PRESETS = {
-  '리스 베이스': {wave:'sawtooth', uni:3, spread:22, sub:.5, cut:420, res:4, envAmt:1, fdec:.4, lfoRate:.35, lfoDepth:600, a:.005, d:.2, s:.9, r:.15, gain:.45},
-  '서브 베이스': {wave:'sine', uni:1, spread:0, sub:0, cut:400, res:.7, envAmt:0, fdec:.2, lfoRate:.2, lfoDepth:0, a:.005, d:.1, s:1, r:.08, gain:.7},
-  '스탭 리드': {wave:'sawtooth', uni:5, spread:18, sub:0, cut:2500, res:3, envAmt:2.5, fdec:.25, lfoRate:5, lfoDepth:0, a:.003, d:.25, s:.35, r:.2, gain:.3},
-  '소프트 패드': {wave:'sawtooth', uni:5, spread:12, sub:0, cut:1800, res:.8, envAmt:0, fdec:.5, lfoRate:.2, lfoDepth:300, a:.6, d:.8, s:.7, r:1.4, gain:.2},
-  '플럭': {wave:'square', uni:2, spread:8, sub:0, cut:900, res:5, envAmt:3.5, fdec:.18, lfoRate:5, lfoDepth:0, a:.002, d:.18, s:0, r:.1, gain:.3},
-  '8비트 리드': {wave:'square', uni:1, spread:0, sub:0, cut:9000, res:.5, envAmt:0, fdec:.2, lfoRate:6, lfoDepth:25, a:.002, d:.1, s:.8, r:.08, gain:.25}};
-const defCh = () => ({pan:0, hpf:20, ls:0, m1f:300, m1g:0, m1q:1, m2f:2500, m2g:0, m2q:1, hs:0, lpf:20000, dly:0, rev:0, duck:0});
 const N = (s, l, n, v = .8) => ({s, l, n, v});
-
-function defaultState(){
+function emptyPat(S){ return S.tracks.map(tr => tr.type === 'drums' ? LANES.map(() => Array(MAXSTEPS).fill(0)) : []); }
+function baseState(){
+  const mk = (name, type, color, extra) => ({name, type, vol:.8, mute:false, solo:false, color, ch:defCh(), ...extra});
   const S = {
-    bpm:174, swing:0, bars:2, mode:'pattern', cur:0, chain:[0,0,1], key:9, scale:'자연 단음계', lock:false, noteLen:2, sel:1,
-    master:{vol:.85, dlyDiv:.75, dlyFb:.35, revSec:2, glue:.3, duckRel:.18},
+    bpm:126, swing:0, bars:4, mode:'song', cur:2, chain:[], key:9, scale:'자연 단음계', lock:false, noteLen:2, sel:0, kit:'프로그레시브',
+    master:{vol:.7, dlyDiv:.75, dlyFb:.35, revSec:2, glue:.3, duckRel:.18}, autos:[],
+    gen:{genre:'프로그레시브 하우스', mood:'어둡게 (단조)', prog:[0,5,2,6], targets:{drums:true, bass:true, pluck:true, lead:true, pad:true, fx:true}, role:'drop'},
     tracks:[
-      {name:'드럼', type:'drums', vol:.9, mute:false, solo:false, color:'#d13a66', ch:defCh(),
-        lanes:LANES.map(() => ({vol:1, tune:0, dec:1, mute:false}))},
-      {name:'베이스', type:'synth', vol:.8, mute:false, solo:false, color:'#8a5cf6', top:59, ch:Object.assign(defCh(), {duck:.6}), syn:{...SYN_PRESETS['리스 베이스']}},
-      {name:'리드', type:'synth', vol:.6, mute:false, solo:false, color:'#3aa0d1', top:83, ch:Object.assign(defCh(), {dly:.25, rev:.2, hpf:200, duck:.3}), syn:{...SYN_PRESETS['스탭 리드']}},
-      {name:'패드', type:'synth', vol:.6, mute:false, solo:false, color:'#3ad18a', top:77, ch:Object.assign(defCh(), {rev:.35, hpf:150, duck:.5}), syn:{...SYN_PRESETS['소프트 패드']}},
-      {name:'샘플', type:'sample', vol:.8, mute:false, solo:false, color:'#d1a53a', top:83, ch:defCh(), smp:{name:'', origBpm:0, mode:'slice', start:0, gain:1, full:true}}],
+      mk('드럼', 'drums', '#d13a66', {lanes:LANES.map(() => ({vol:1, tune:0, dec:1, mute:false, smp:''}))}),
+      mk('베이스', 'synth', '#8a5cf6', {top:47, syn:{...SYN_PRESETS['프로그 롤링 베이스']}}),
+      mk('플럭', 'synth', '#3aa0d1', {top:95, syn:{...SYN_PRESETS['프로그 플럭']}}),
+      mk('리드', 'synth', '#e0709a', {top:95, syn:{...SYN_PRESETS['슈퍼쏘 리드']}}),
+      mk('패드', 'synth', '#3ad18a', {top:83, syn:{...SYN_PRESETS['와이드 패드']}}),
+      mk('FX', 'synth', '#c0c0c0', {top:59, syn:{...SYN_PRESETS['라이저 (빌드업)']}}),
+      mk('샘플', 'sample', '#d1a53a', {top:83, smp:{name:'', origBpm:0, mode:'slice', start:0, gain:1, full:true}})],
     pats:[]
   };
-  S.pats = [0,1,2,3].map(() => emptyPat(S));
-  const p = S.pats[0], d = p[0];
-  for (let b = 0; b < 2; b++){
-    [0,10].forEach(s => d[0][b*16 + s] = .95);
-    [4,12].forEach(s => d[1][b*16 + s] = .95);
-    for (let s = 0; s < 16; s += 2) d[3][b*16 + s] = s % 4 ? .55 : .35;
-    d[4][b*16 + 14] = .5;
-  }
-  p[1] = [N(0,5,33), N(6,2,33), N(10,4,36), N(16,5,31), N(22,2,31), N(26,4,33)];
-  p[2] = [N(0,2,69), N(3,2,72), N(6,2,76), N(10,2,72), N(13,2,69), N(16,2,67), N(19,2,71), N(22,2,74), N(26,2,71), N(29,2,67)];
-  p[3] = [N(0,16,57), N(0,16,60), N(0,16,64), N(16,16,55), N(16,16,59), N(16,16,62)];
+  S.pats = [0, 1, 2, 3].map(() => emptyPat(S));
   return S;
 }
-function emptyPat(S){ return S.tracks.map(tr => tr.type === 'drums' ? LANES.map(() => Array(MAXSTEPS).fill(0)) : []); }
+function defaultState(){ S = baseState(); applyGenre(S.gen.genre); generateSong(); return S; }
 
 let S;
-try { S = JSON.parse(localStorage.getItem('studio_v1')); if (!S || S.tracks.length !== 5) S = null; } catch(e){ S = null; }
-if (!S) S = defaultState();
-const sampleBufs = {};
-let undoStack = [], redoStack = [], saveTimer = 0;
+try { S = JSON.parse(localStorage.getItem('studio_v2')); if (!S || S.tracks.length !== 7) S = null; } catch(e){ S = null; }
+let fresh = false;
+if (!S){ S = baseState(); fresh = true; }   // 곡 생성은 생성기 정의 이후에 수행
+const sampleBufs = {}, drumBufs = {};
+let undoStack = [], redoStack = [], saveTimer = 0, autoSel = 0;
 const P = () => S.bars * 16;
 const curPat = () => S.pats[S.cur];
-function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem('studio_v1', JSON.stringify(S)); } catch(e){} }, 400); }
+function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem('studio_v2', JSON.stringify(S)); } catch(e){} }, 400); }
 function snap(){ undoStack.push(JSON.stringify(S)); if (undoStack.length > 60) undoStack.shift(); redoStack = []; }
 function restore(json){ S = JSON.parse(json); refreshAll(); applyAll(G); save(); }
+
+// ---- 샘플 영구 보관 (IndexedDB) ----
+const idb = {db:null,
+  open(){ return new Promise(res => { try { const r = indexedDB.open('studio_samples', 1); r.onupgradeneeded = () => r.result.createObjectStore('s'); r.onsuccess = () => { this.db = r.result; res(); }; r.onerror = () => res(); } catch(e){ res(); } }); },
+  op(mode, fn){ return new Promise(res => { if (!this.db) return res(); try { const r = fn(this.db.transaction('s', mode).objectStore('s')); r.onsuccess = () => res(r.result); r.onerror = () => res(); } catch(e){ res(); } }); },
+  put(k, v){ return this.op('readwrite', s => s.put(v, k)); }, get(k){ return this.op('readonly', s => s.get(k)); }, del(k){ return this.op('readwrite', s => s.delete(k)); }};
 
 // =====================================================================
 //  오디오 그래프
 // =====================================================================
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
-const noiseCache = new WeakMap();
+const noiseCache = new WeakMap(), curveCache = {};
 const sp = (param, v, c) => { if (c instanceof OfflineAudioContext) param.value = v; else param.setTargetAtTime(v, c.currentTime, .015); };
-
+function makeCurve(k){
+  const key = Math.round(k * 20); if (curveCache[key]) return curveCache[key];
+  const n = 2048, c = new Float32Array(n), a = 1 + key / 20 * 10;
+  for (let i = 0; i < n; i++){ const x = i / (n - 1) * 2 - 1; c[i] = key === 0 ? x : Math.tanh(x * a) / Math.tanh(a); }
+  return curveCache[key] = c;
+}
 function makeIR(c, sec){
   const len = Math.floor(c.sampleRate * sec), b = c.createBuffer(2, len, c.sampleRate);
   for (let ch = 0; ch < 2; ch++){ const d = b.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5); }
   return b;
 }
 function buildGraph(c){
-  const G = {ctx:c, tr:[]};
-  G.master = c.createGain();
+  const G = {ctx:c, tr:[], openG:null};
+  G.master = c.createGain(); G.mauto = c.createGain(); G.mhp = c.createBiquadFilter(); G.mhp.type = 'highpass'; G.mhp.frequency.value = 20; G.mhp.Q.value = .71;
   G.glue = c.createDynamicsCompressor(); G.glue.knee.value = 10; G.glue.attack.value = .01; G.glue.release.value = .15;
   G.lim = c.createDynamicsCompressor(); G.lim.threshold.value = -1.5; G.lim.knee.value = 0; G.lim.ratio.value = 20; G.lim.attack.value = .002; G.lim.release.value = .08;
   G.an = c.createAnalyser(); G.an.fftSize = 1024;
-  G.master.connect(G.glue); G.glue.connect(G.lim); G.lim.connect(G.an); G.lim.connect(c.destination);
-  // 딜레이 / 리버브 리턴
+  [G.master, G.mauto, G.mhp, G.glue, G.lim].reduce((a, b) => (a.connect(b), b)); G.lim.connect(G.an); G.lim.connect(c.destination);
   G.dIn = c.createGain(); G.delay = c.createDelay(4); G.dFb = c.createGain(); G.dLp = c.createBiquadFilter(); G.dLp.type = 'lowpass'; G.dLp.frequency.value = 5000; G.dOut = c.createGain(); G.dOut.gain.value = .6;
   G.dIn.connect(G.delay); G.delay.connect(G.dLp); G.dLp.connect(G.dFb); G.dFb.connect(G.delay); G.dLp.connect(G.dOut); G.dOut.connect(G.master);
   G.rIn = c.createGain(); G.rHp = c.createBiquadFilter(); G.rHp.type = 'highpass'; G.rHp.frequency.value = 250; G.conv = c.createConvolver(); G.rOut = c.createGain(); G.rOut.gain.value = .55;
   G.rIn.connect(G.rHp); G.rHp.connect(G.conv); G.conv.connect(G.rOut); G.rOut.connect(G.master);
   G.irSec = 0;
   S.tracks.forEach(() => {
-    const n = {}, f = (t, fr) => { const b = c.createBiquadFilter(); b.type = t; b.frequency.value = fr; return b; };
-    n.in = c.createGain(); n.hpf = f('highpass', 20); n.ls = f('lowshelf', 100); n.m1 = f('peaking', 300); n.m2 = f('peaking', 2500); n.hs = f('highshelf', 8000); n.lpf = f('lowpass', 20000);
-    n.duck = c.createGain(); n.vol = c.createGain(); n.pan = c.createStereoPanner(); n.ds = c.createGain(); n.rs = c.createGain();
-    [n.in, n.hpf, n.ls, n.m1, n.m2, n.hs, n.lpf, n.duck, n.vol, n.pan, G.master].reduce((a, b) => (a.connect(b), b));
+    const n = {}, f = (t, fr) => { const b = c.createBiquadFilter(); b.type = t; b.frequency.value = fr; return b; }, gn = () => c.createGain();
+    n.in = gn(); n.drv = c.createWaveShaper(); n.cmix = gn(); n.chD = c.createDelay(.1); n.chD.delayTime.value = .018; n.chW = gn(); n.chW.gain.value = 0;
+    n.chL = c.createOscillator(); n.chL.frequency.value = .45; n.chLg = gn(); n.chLg.gain.value = .004; n.chL.connect(n.chLg); n.chLg.connect(n.chD.delayTime); n.chL.start();
+    n.hpf = f('highpass', 20); n.ls = f('lowshelf', 100); n.m1 = f('peaking', 300); n.m2 = f('peaking', 2500); n.hs = f('highshelf', 8000); n.lpf = f('lowpass', 20000);
+    n.comp = c.createDynamicsCompressor(); n.comp.knee.value = 6; n.mk = gn(); n.gate = gn(); n.duck = gn(); n.auto = gn(); n.vol = gn(); n.pan = c.createStereoPanner(); n.ds = gn(); n.rs = gn();
+    n.in.connect(n.drv); n.drv.connect(n.cmix); n.drv.connect(n.chD); n.chD.connect(n.chW); n.chW.connect(n.cmix);
+    [n.cmix, n.hpf, n.ls, n.m1, n.m2, n.hs, n.lpf, n.comp, n.mk, n.gate, n.duck, n.auto, n.vol, n.pan, G.master].reduce((a, b) => (a.connect(b), b));
     n.pan.connect(n.ds); n.ds.connect(G.dIn); n.pan.connect(n.rs); n.rs.connect(G.rIn);
     G.tr.push(n);
   });
@@ -204,6 +266,8 @@ function applyChannel(G, i){
   n.m2.frequency.value = c.m2f; n.m2.gain.value = c.m2g; n.m2.Q.value = c.m2q;
   n.hs.gain.value = c.hs; n.lpf.frequency.value = c.lpf;
   sp(n.ds.gain, c.dly, x); sp(n.rs.gain, c.rev, x);
+  n.comp.threshold.value = c.cth; n.comp.ratio.value = c.cratio; n.comp.attack.value = c.catt; n.comp.release.value = c.crel; n.mk.gain.value = Math.pow(10, c.cmk / 20);
+  n.drv.curve = makeCurve(c.drive); n.chW.gain.value = c.chor * .6; n.chLg.gain.value = .002 + c.chor * .004;
 }
 function applyMaster(G){
   const m = S.master, x = G.ctx;
@@ -213,53 +277,113 @@ function applyMaster(G){
   if (G.irSec !== m.revSec){ G.conv.buffer = makeIR(x, m.revSec); G.irSec = m.revSec; }
 }
 function applyAll(G){ S.tracks.forEach((_, i) => applyChannel(G, i)); applyMaster(G); }
+function resetRealtime(G){   // 정지 시 오토메이션/게이트/사이드체인 잔여값 복구
+  const c = G.ctx, ps = [G.mauto.gain, G.mhp.frequency];
+  G.tr.forEach(n => ps.push(n.duck.gain, n.gate.gain, n.auto.gain, n.lpf.frequency, n.hpf.frequency, n.rs.gain, n.ds.gain, n.pan.pan));
+  ps.forEach(p => p.cancelScheduledValues(0));
+  G.mauto.gain.value = 1; G.mhp.frequency.value = 20; G.tr.forEach(n => { n.duck.gain.value = 1; n.gate.gain.value = 1; n.auto.gain.value = 1; });
+  applyAll(G);
+}
+
+// ---- 오토메이션 ----
+const AUTO = {
+  lpf:{label:'하이컷 필터', min:150, max:20000, log:true, base:t => S.tracks[t].ch.lpf}, hpf:{label:'로우컷 필터', min:20, max:8000, log:true, base:t => S.tracks[t].ch.hpf},
+  vol:{label:'볼륨', min:0, max:1, base:() => 1}, rev:{label:'리버브 센드', min:0, max:1, base:t => S.tracks[t].ch.rev},
+  dly:{label:'딜레이 센드', min:0, max:1, base:t => S.tracks[t].ch.dly}, pan:{label:'팬', min:-1, max:1, base:t => S.tracks[t].ch.pan},
+  mvol:{label:'마스터 볼륨', min:0, max:1, base:() => 1, master:true}, mhpf:{label:'마스터 로우컷 (빌드업 스윕)', min:20, max:6000, log:true, base:() => 20, master:true}};
+const autoMap = (d, v) => d.log ? d.min * Math.pow(d.max / d.min, v) : d.min + (d.max - d.min) * v;
+function autoParam(G, a){
+  if (a.tr < 0) return a.p === 'mvol' ? G.mauto.gain : G.mhp.frequency;
+  const n = G.tr[a.tr]; return {lpf:n.lpf.frequency, hpf:n.hpf.frequency, vol:n.auto.gain, rev:n.rs.gain, dly:n.ds.gain, pan:n.pan.pan}[a.p];
+}
+function evalCurve(pts, x){
+  if (!pts.length) return .5; if (x <= pts[0].s) return pts[0].v; const l = pts[pts.length - 1]; if (x >= l.s) return l.v;
+  for (let i = 1; i < pts.length; i++) if (x <= pts[i].s){ const a = pts[i-1], b = pts[i]; return a.v + (b.v - a.v) * (b.s === a.s ? 0 : (x - a.s) / (b.s - a.s)); }
+  return l.v;
+}
+function doAutos(G, pat, s, t, sd){
+  if (!S.autos.length) return;
+  const have = new Set(S.autos.filter(a => a.pat === pat).map(a => a.tr + ':' + a.p));
+  for (const a of S.autos){
+    const def = AUTO[a.p], prm = autoParam(G, a); if (!def || !prm) continue;
+    if (a.pat === pat && a.pts.length){
+      const v0 = autoMap(def, evalCurve(a.pts, s)), v1 = autoMap(def, evalCurve(a.pts, s + 1));
+      prm.setValueAtTime(v0, t);
+      if (def.log) prm.exponentialRampToValueAtTime(v1, t + sd); else prm.linearRampToValueAtTime(v1, t + sd);
+    } else if (s === 0 && !have.has(a.tr + ':' + a.p)){ prm.setValueAtTime(def.base(a.tr), t); }
+  }
+}
 
 // ---- 드럼 / 신스 / 샘플 음원 ----
 function noiseSrc(c, t, dur){
   let b = noiseCache.get(c);
   if (!b){ b = c.createBuffer(1, c.sampleRate * 2, c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; noiseCache.set(c, b); }
-  const s = c.createBufferSource(); s.buffer = b; s.start(t, Math.random() * 1.5); s.stop(t + dur); return s;
+  const s = c.createBufferSource(); s.buffer = b; s.loop = true; s.start(t, Math.random() * 1.5); s.stop(t + dur); return s;
 }
 function env(c, out, t, peak, dec){ const g = c.createGain(); g.gain.value = 0; g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(.001, t + dec); g.connect(out); return g; }
 function playDrum(G, ti, li, t, vel){
   const c = G.ctx, out = G.tr[ti].in, L = S.tracks[ti].lanes[li], tm = Math.pow(2, L.tune / 12), dc = L.dec, v = vel * L.vol, kind = LANES[li][1];
-  const osc = (type, f0, f1, tf, g, dur) => { const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + tf); o.connect(g); o.start(t); o.stop(t + dur + .05); };
-  const nz = (type, f, q, g, dur) => { const s = noiseSrc(c, t, dur + .05), b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; s.connect(b); b.connect(g); };
+  if (kind === 'hatC' && G.openG){ G.openG.gain.cancelScheduledValues(t); G.openG.gain.setTargetAtTime(0, t, .006); }   // 클로즈 햇이 오픈 햇을 끊음
+  const buf = drumBufs[li];
+  if (buf){
+    const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = tm;
+    const full = buf.duration / tm, len = dc < 1 ? full * dc : full, g = c.createGain();
+    g.gain.setValueAtTime(v, t); if (dc < 1){ g.gain.setValueAtTime(v, Math.max(t, t + len - .01)); g.gain.linearRampToValueAtTime(0, t + len); }
+    src.connect(g); g.connect(out); src.start(t, 0, len * tm); if (kind === 'hatO') G.openG = g; return;
+  }
+  const K = KITS[S.kit] || KITS['DnB'];
+  const osc = (type, f0, f1, tf, dest, dur) => { const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + tf); o.connect(dest); o.start(t); o.stop(t + dur + .05); };
+  const nz = (type, f, q, dest, dur) => { const s = noiseSrc(c, t, dur + .05), b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; s.connect(b); b.connect(dest); };
   if (kind === 'kick'){
-    osc('sine', 190 * tm, 46 * tm, .1 * dc, env(c, out, t, v * .95, .45 * dc), .45 * dc);
-    nz('highpass', 3500, .7, env(c, out, t, v * .25, .012), .012);
+    const k = K.kick; let dest = out;
+    if (k.drv > 0){ const sh = c.createWaveShaper(); sh.curve = makeCurve(k.drv); sh.connect(out); dest = sh; }
+    osc('sine', k.f0 * tm, k.f1 * tm, k.tf * dc, env(c, dest, t, v * .95, k.dec * dc), k.dec * dc);
+    nz('highpass', 3500, .7, env(c, out, t, v * k.clk, .012), .012);
   } else if (kind === 'snare'){
-    osc('triangle', 190 * tm, 140 * tm, .08, env(c, out, t, v * .55, .14 * dc), .14 * dc);
-    nz('highpass', 1500 * tm, .7, env(c, out, t, v * .8, .22 * dc), .22 * dc);
+    const k = K.snare; osc('triangle', k.tone * tm, k.tone * .74 * tm, .08, env(c, out, t, v * k.body, k.tdec * dc), k.tdec * dc);
+    nz('highpass', k.nf * tm, .7, env(c, out, t, v * .8, k.ndec * dc), k.ndec * dc);
   } else if (kind === 'clap'){
-    [0, .011, .022].forEach((o, i) => nz('bandpass', 1500 * tm, 1.2, env(c, out, t + o, v * .6, i < 2 ? .01 : .18 * dc), i < 2 ? .01 : .18 * dc));
-    // 버스트 시작 시점 보정
-  } else if (kind === 'hatC') nz('highpass', 7500 * tm, .7, env(c, out, t, v * .5, .045 * dc), .045 * dc);
-  else if (kind === 'hatO') nz('highpass', 7000 * tm, .7, env(c, out, t, v * .45, .28 * dc), .28 * dc);
-  else if (kind === 'rim') osc('triangle', 1700 * tm, 1500 * tm, .02, env(c, out, t, v * .5, .03 * dc), .03 * dc);
-  else osc('sine', 220 * tm, 110 * tm, .12, env(c, out, t, v * .8, .22 * dc), .22 * dc);
+    const k = K.clap; [0, .011, .022].forEach((o, i) => nz('bandpass', k.f * tm, 1.2, env(c, out, t + o, v * .6, i < 2 ? .01 : k.dec * dc), i < 2 ? .01 : k.dec * dc));
+  } else if (kind === 'hatC') nz('highpass', K.hatC.f * tm, .7, env(c, out, t, v * .5, K.hatC.dec * dc), K.hatC.dec * dc);
+  else if (kind === 'hatO'){ const g = env(c, out, t, v * .45, K.hatO.dec * dc); nz('highpass', K.hatO.f * tm, .7, g, K.hatO.dec * dc); G.openG = g; }
+  else if (kind === 'rim') osc('triangle', K.rim.f * tm, K.rim.f * .88 * tm, .02, env(c, out, t, v * .5, .03 * dc), .03 * dc);
+  else osc('sine', K.perc.f * tm, K.perc.f * .5 * tm, .12, env(c, out, t, v * .8, K.perc.dec * dc), K.perc.dec * dc);
 }
 function playSynth(G, ti, midi, t, dur, vel){
   const c = G.ctx, p = S.tracks[ti].syn, f = 440 * Math.pow(2, (midi - 69) / 12);
   const a = Math.max(.002, p.a), d = Math.max(.005, p.d), s = Math.max(.0001, p.s), r = Math.max(.02, p.r), peak = vel * p.gain;
-  const rel = Math.max(t + .02, t + dur);
+  const rel = Math.max(t + .02, t + dur), stop = rel + r + .1;
   const envAt = x => { const e = x - t; return e < a ? peak * e / a : e < a + d ? peak * Math.pow(s, (e - a) / d) : peak * s; };
-  const filt = c.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = p.res;
-  filt.frequency.setValueAtTime(Math.min(20000, p.cut * Math.pow(2, p.envAmt)), t);
-  filt.frequency.exponentialRampToValueAtTime(Math.max(20, p.cut), t + Math.max(.02, p.fdec));
+  const filt = c.createBiquadFilter(); filt.type = p.ftype; filt.Q.value = p.res;
+  const base = clamp(p.cut * Math.pow(f / 261.63, p.kt), 30, 20000);
+  filt.frequency.setValueAtTime(clamp(base * Math.pow(2, p.envAmt), 20, 20000), t);
+  filt.frequency.exponentialRampToValueAtTime(base, t + Math.max(.02, p.fdec));
   const amp = c.createGain();
   amp.gain.setValueAtTime(.0001, t); amp.gain.linearRampToValueAtTime(peak, t + a);
   amp.gain.exponentialRampToValueAtTime(Math.max(.0001, peak * s), t + a + d);
   amp.gain.cancelScheduledValues(rel); amp.gain.setValueAtTime(Math.max(.0001, envAt(rel)), rel); amp.gain.setTargetAtTime(.0001, rel, r / 4);
-  const stop = rel + r + .1, mix = c.createGain(), n = Math.round(p.uni);
-  mix.gain.value = 1 / Math.sqrt(n);
-  const oscs = [];
-  for (let i = 0; i < n; i++){
-    const o = c.createOscillator(); o.type = p.wave; o.frequency.value = f; o.detune.value = n === 1 ? 0 : (i / (n - 1) * 2 - 1) * p.spread; o.connect(mix); oscs.push(o);
+  const oscs = [], n = Math.round(p.uni), mix = c.createGain(); mix.gain.value = p.osc / Math.sqrt(n);
+  const mk = (type, freq, det, pan, dest) => {
+    const o = c.createOscillator(); o.type = type; o.frequency.value = freq; o.detune.value = det;
+    if (pan){ const pn = c.createStereoPanner(); pn.pan.value = clamp(pan, -1, 1); o.connect(pn); pn.connect(dest); } else o.connect(dest);
+    oscs.push(o);
+  };
+  for (let i = 0; i < n; i++){ const x = n === 1 ? 0 : i / (n - 1) * 2 - 1; mk(p.wave, f, x * p.spread, x * p.width, mix); }
+  mix.connect(filt);
+  if (p.wave2 !== 'off' && p.l2 > 0){
+    const m2 = c.createGain(); m2.gain.value = p.l2 * p.osc; m2.connect(filt); const f2 = f * Math.pow(2, p.o2);
+    mk(p.wave2, f2, -p.det2 / 2, -p.width * .5, m2); mk(p.wave2, f2, p.det2 / 2, p.width * .5, m2);
   }
-  if (p.sub > 0){ const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f / 2; const g = c.createGain(); g.gain.value = p.sub; o.connect(g); g.connect(mix); oscs.push(o); }
-  if (p.lfoDepth > 0){ const o = c.createOscillator(), g = c.createGain(); o.frequency.value = p.lfoRate; g.gain.value = p.lfoDepth; o.connect(g); g.connect(filt.detune); oscs.push(o); }
-  mix.connect(filt); filt.connect(amp); amp.connect(G.tr[ti].in);
+  if (p.sub > 0){ const sg = c.createGain(); sg.gain.value = p.sub; sg.connect(filt); mk('sine', f / 2, 0, 0, sg); }
+  if (p.noise > 0){ const ng = c.createGain(); ng.gain.value = p.noise; ng.connect(filt); noiseSrc(c, t, stop - t).connect(ng); }
+  if (p.lfoDepth > 0){
+    const lo = c.createOscillator(), lg = c.createGain(); lo.type = p.lfoShape; lo.frequency.value = p.lfoRate; lo.connect(lg);
+    if (p.lfoTarget === 'cut'){ lg.gain.value = p.lfoDepth; lg.connect(filt.detune); }
+    else if (p.lfoTarget === 'pitch'){ lg.gain.value = p.lfoDepth / 10; oscs.forEach(o => lg.connect(o.detune)); }
+    else { lg.gain.value = peak * p.lfoDepth / 2400 * .5; lg.connect(amp.gain); }
+    oscs.push(lo);
+  }
+  filt.connect(amp); amp.connect(G.tr[ti].in);
   oscs.forEach(o => { o.start(t); o.stop(stop); });
 }
 function playSample(G, ti, midi, t, dur, vel){
@@ -268,11 +392,9 @@ function playSample(G, ti, midi, t, dur, vel){
   let rate = sm.origBpm > 0 ? S.bpm / sm.origBpm : 1, off, len;
   if (sm.mode === 'slice'){
     const idx = midi - 60; if (idx < 0 || idx > 15) return;
-    const sl = buf.duration / 16; off = sl * idx; len = sl;
-    if (!sm.full) len = Math.min(len, dur * rate);
+    const sl = buf.duration / 16; off = sl * idx; len = sl; if (!sm.full) len = Math.min(len, dur * rate);
   } else {
-    rate *= Math.pow(2, (midi - 60) / 12); off = buf.duration * sm.start; len = buf.duration - off;
-    if (!sm.full) len = Math.min(len, dur * rate);
+    rate *= Math.pow(2, (midi - 60) / 12); off = buf.duration * sm.start; len = buf.duration - off; if (!sm.full) len = Math.min(len, dur * rate);
   }
   src.playbackRate.value = rate;
   const g = c.createGain(), wall = len / rate;
@@ -283,14 +405,16 @@ function duck(G, t){
   const rel = S.master.duckRel;
   S.tracks.forEach((tr, j) => { const d = tr.ch.duck; if (d > 0){ const gp = G.tr[j].duck.gain; gp.setValueAtTime(1 - d, t); gp.linearRampToValueAtTime(1, t + rel); } });
 }
-function scheduleStep(G, pat, s, t, stepDur){
+function scheduleStep(G, pat, s, t, sd){
   const pp = S.pats[pat];
+  doAutos(G, pat, s, t, sd);
   S.tracks.forEach((tr, i) => {
     if (!audible(i)) return;
+    if (tr.ch.gate > 0){ const lv = GATE_PATS[tr.ch.gatePat || 0].p[s % 16]; G.tr[i].gate.gain.setTargetAtTime(1 - tr.ch.gate * (1 - lv), t, .004); }
     if (tr.type === 'drums'){
       LANES.forEach((_, li) => { const v = pp[i][li][s]; if (v > 0 && !tr.lanes[li].mute){ playDrum(G, i, li, t, v); if (li === 0) duck(G, t); } });
     } else for (const nt of pp[i]) if (nt.s === s){
-      if (tr.type === 'synth') playSynth(G, i, nt.n, t, nt.l * stepDur, nt.v); else playSample(G, i, nt.n, t, nt.l * stepDur, nt.v);
+      if (tr.type === 'synth') playSynth(G, i, nt.n, t, nt.l * sd, nt.v); else playSample(G, i, nt.n, t, nt.l * sd, nt.v);
     }
   });
 }
@@ -298,7 +422,7 @@ function scheduleStep(G, pat, s, t, stepDur){
 // =====================================================================
 //  재생 엔진
 // =====================================================================
-let G = buildGraph(ctx), playing = false, curStep = 0, nextTime = 0, timer = 0, uiQ = [], shownStep = -1, shownPat = 0;
+let G = buildGraph(ctx), playing = false, curStep = 0, nextTime = 0, timer = 0, uiQ = [], shownStep = -1;
 function posOf(k){
   if (S.mode === 'song' && S.chain.length){ const tot = S.chain.length * P(), q = k % tot; return {pat:S.chain[Math.floor(q / P())], step:q % P(), ci:Math.floor(q / P())}; }
   return {pat:S.cur, step:k % P(), ci:-1};
@@ -307,8 +431,7 @@ function tick(){
   while (nextTime < ctx.currentTime + .12){
     const sd = 60 / S.bpm / 4, pos = posOf(curStep), t = nextTime + (curStep % 2 ? sd * S.swing / 100 : 0);
     scheduleStep(G, pos.pat, pos.step, t, sd);
-    uiQ.push({t, pos});
-    nextTime += sd; curStep++;
+    uiQ.push({t, pos}); nextTime += sd; curStep++;
   }
 }
 function play(){
@@ -319,10 +442,133 @@ function play(){
 function stop(){
   if (!playing) return;
   playing = false; clearInterval(timer); $('#play').textContent = '▶ 재생'; $('#play').classList.remove('on');
-  shownStep = -1; document.querySelectorAll('.ph').forEach(e => e.style.display = 'none'); renderChain();
-  S.tracks.forEach((_, i) => { const gp = G.tr[i].duck.gain; gp.cancelScheduledValues(0); gp.value = 1; });
+  shownStep = -1; document.querySelectorAll('.ph').forEach(e => e.style.display = 'none'); renderChain(); resetRealtime(G);
 }
 const togglePlay = () => playing ? stop() : play();
+
+// =====================================================================
+//  작곡 도우미 (규칙 기반 생성)
+// =====================================================================
+const genScale = () => { const sc = SCALES[S.scale]; return sc.length === 7 ? sc : SCALES['자연 단음계']; };
+const rootAt = o => 12 * (o + 1) + S.key;
+const degMidi = (oct, sc, d) => oct + sc[((d % sc.length) + sc.length) % sc.length] + 12 * Math.floor(d / sc.length);
+const chordOf = (oct, sc, deg, ext) => [0, 2, 4].concat(ext ? [6] : []).map(k => degMidi(oct, sc, deg + k));
+function chordName(deg){
+  const sc = genScale(), c = chordOf(rootAt(3), sc, deg, false), th = (c[1] - c[0]) % 12, fi = (c[2] - c[0]) % 12;
+  return NOTE_NAMES[c[0] % 12] + (th === 3 ? (fi === 6 ? 'dim' : 'm') : '');
+}
+function voiceChord(notes, prevMean){
+  let best = null, bd = 1e9;
+  for (let inv = 0; inv < notes.length; inv++){
+    const v = notes.map((x, i) => i < inv ? x + 12 : x).sort((a, b) => a - b);
+    for (const sh of [-12, 0, 12]){ const w = v.map(x => x + sh), m = w.reduce((a, b) => a + b) / w.length, d = Math.abs(m - prevMean); if (d < bd){ bd = d; best = w; } }
+  }
+  return best;
+}
+function applyGenre(name){
+  const g = GENRES[name]; if (!g) return;
+  S.gen.genre = name; S.bpm = g.bpm; S.swing = g.swing; S.kit = g.kit; S.bars = 4; Object.assign(S.master, g.master); S.scale = MOODS[S.gen.mood] || S.scale;
+  S.tracks.forEach((tr, i) => {
+    if (i === T.SM) return;
+    tr.vol = g.vol[i]; tr.ch = Object.assign(defCh(), g.ch[i] || {});
+    if (tr.type === 'synth' && g.syn[i]) tr.syn = {...SYN_PRESETS[g.syn[i]]};
+  });
+}
+function newProg(){
+  const sc = S.scale in PROGS ? S.scale : '자연 단음계';
+  S.gen.prog = pick(PROGS[sc]).slice();
+}
+const RHY = [[[0,3],[3,3],[6,2],[8,4]], [[0,2],[2,2],[4,4],[8,2],[10,2],[12,4]], [[0,6],[6,2],[8,6]], [[0,4],[4,4],[8,4],[12,4]], [[2,2],[5,3],[8,2],[10,3]], [[0,2],[3,1],[4,3],[8,2],[11,1],[12,4]]];
+const MASKS = ['x.x.x.x.x.x.x.x.', 'x.xx.xx.x.xx.xx.', 'xxxxxxxxxxxxxxxx', 'x..x..x.x..x..x.', '.x.x.x.x.x.x.x.x', 'x.xxx.xxx.xxx.xx'];
+function genPattern(idx, role){
+  const sc = genScale(), prog = S.gen.prog, bars = S.bars, steps = bars * 16, st = GENRES[S.gen.genre].style, tg = S.gen.targets;
+  const pp = S.pats[idx] = emptyPat(S); S.autos = S.autos.filter(a => a.pat !== idx);
+  const chordDeg = b => prog[b % prog.length];
+  // --- 드럼 ---
+  if (tg.drums){
+    const d = pp[T.DR];
+    for (let b = 0; b < bars; b++){
+      const o = b * 16, last = b === bars - 1, pre = b === bars - 2;
+      if (st === 'dnb'){
+        if (role !== 'break'){ [0,10].forEach(s => d[0][o+s] = .95); [4,12].forEach(s => d[1][o+s] = .95); }
+        for (let s = 0; s < 16; s += 2) d[3][o+s] = s % 4 ? .55 : .35;
+        d[4][o+14] = .5; if (role === 'break'){ d[3][o+4] = .4; d[3][o+12] = .4; } continue;
+      }
+      if (role !== 'break') [0,4,8,12].forEach(s => d[0][o+s] = .95);
+      if (role === 'intro'){ [2,6,10,14].forEach(s => d[3][o+s] = .4); }
+      if (role === 'drop' || (role === 'build' && b >= 1)) [4,12].forEach(s => d[2][o+s] = .85);
+      if (role === 'drop'){
+        [2,6,10,14].forEach(s => d[4][o+s] = .5);
+        for (let s = 0; s < 16; s++) if (s % 2 === 1 && rnd() < .7) d[3][o+s] = s % 4 === 3 ? .38 : .28;
+        if (rnd() < .6) d[5][o + pick([7,11,15])] = .4; if (rnd() < .5) d[6][o + pick([5,13])] = .35;
+        if (last && rnd() < .7) [12,13,14,15].forEach((s, i) => d[1][o+s] = .45 + i * .15);
+      }
+      if (role === 'build'){
+        for (let s = 0; s < 16; s += 2) d[3][o+s] = .3 + .45 * (b + 1) / bars;
+        if (pre) [0,4,8,12].forEach((s, i) => d[1][o+s] = .45 + i * .1);
+        if (last){ for (let s = 0; s < 16; s += 2) d[1][o+s] = .4 + .5 * s / 16; for (let s = 8; s < 16; s++) d[1][o+s] = Math.max(d[1][o+s], .6 + .4 * (s - 8) / 8); }
+      }
+      if (role === 'break'){ for (let s = 2; s < 16; s += 4) d[3][o+s] = .28; if (b === 0 && rnd() < .6) d[5][o+14] = .35; }
+    }
+  }
+  // --- 베이스 ---
+  if (tg.bass && role !== 'break'){
+    const bs = pp[T.BS], type = role === 'drop' || st === 'dnb' ? GENRES[S.gen.genre].bass : 'offbeat';
+    for (let b = 0; b < bars; b++){
+      const o = b * 16, root = degMidi(rootAt(1), sc, chordDeg(b));
+      if (type === 'rolling'){ for (let s = 0; s < 16; s++) if (s % 4 !== 0) bs.push(N(o+s, 1, root + (s % 8 === 7 || rnd() < .1 ? 12 : 0), s % 4 === 2 ? .9 : .65)); }
+      else if (type === 'offbeat'){ [2,6,10,14].forEach(s => bs.push(N(o+s, 2, root, .85))); }
+      else if (type === 'sync'){ [[0,3,0],[3,2,0],[6,2,7],[10,2,0],[13,3,0]].forEach(([s, l, iv]) => bs.push(N(o+s, l, root + iv, .8))); }
+      else if (type === 'dnb'){ [[0,6],[6,2],[10,4]].forEach(([s, l]) => bs.push(N(o+s, l, root, .9))); }
+      else bs.push(N(o, 16, root, .85));
+    }
+  }
+  // --- 패드 ---
+  if (tg.pad){
+    let prev = 60;
+    for (let b = 0; b < bars; b++){
+      const v = voiceChord(chordOf(rootAt(3), sc, chordDeg(b), role === 'drop' && rnd() < .5), prev); prev = v.reduce((a, c) => a + c) / v.length;
+      v.forEach(m => pp[T.PD].push(N(b * 16, 16, m, .7)));
+    }
+  }
+  // --- 플럭(아르페지오) ---
+  if (tg.pluck && role !== 'intro'){
+    const mask = role === 'break' ? 'x...x...x...x...' : role === 'build' ? pick(MASKS.slice(0, 3)) : pick(MASKS), seqs = [[0,1,2,1], [0,2,1,2], [0,1,2,3,2,1], [2,1,0,1]];
+    for (let b = 0; b < bars; b++){
+      const ch = chordOf(rootAt(4), sc, chordDeg(b), false), tones = [ch[0], ch[1], ch[2], ch[0] + 12, ch[1] + 12], seq = seqs[b % 2 ? 1 : 0] || seqs[0]; let k = 0;
+      for (let s = 0; s < 16; s++) if (mask[s] === 'x'){ pp[T.PL].push(N(b * 16 + s, 1, tones[seq[k++ % seq.length]], s % 4 === 0 ? .85 : .55 + rnd() * .15)); }
+    }
+  }
+  // --- 리드 멜로디 ---
+  if (tg.lead && (role === 'drop' || role === 'break')){
+    const list = []; for (let m = 70; m <= 94; m++) if (sc.includes(((m - S.key) % 12 + 12) % 12)) list.push(m);
+    const r1 = role === 'break' ? RHY[2] : pick(RHY), r2 = role === 'break' ? RHY[3] : pick(RHY); let idx = Math.floor(list.length / 2);
+    for (let b = 0; b < bars; b++){
+      const ch = chordOf(rootAt(5), sc, chordDeg(b), false).map(m => m % 12), r = b % 2 ? r2 : r1;
+      r.forEach(([s, l], i) => {
+        const strong = s % 8 === 0 || i === r.length - 1;
+        if (strong){ const cand = list.map((m, j) => ({m, j})).filter(x => ch.includes(x.m % 12) && Math.abs(x.j - idx) <= 4); if (cand.length) idx = pick(cand).j; }
+        else idx = clamp(idx + pick([-2, -1, -1, 0, 1, 1, 2]), 0, list.length - 1);
+        pp[T.LD].push(N(b * 16 + s, l, list[idx], .75 + rnd() * .15));
+      });
+    }
+  }
+  // --- FX + 오토메이션 ---
+  if (tg.fx){
+    if (role === 'build') pp[T.FX].push(N(0, steps, 60, .9));
+    if (role === 'drop') pp[T.FX].push(N(0, 8, 36, .9));
+  }
+  if (role === 'build'){
+    S.autos.push({pat:idx, tr:-1, p:'mhpf', pts:[{s:0, v:0}, {s:steps, v:.8}]}, {pat:idx, tr:T.PD, p:'hpf', pts:[{s:0, v:.2}, {s:steps, v:.85}]});
+  }
+}
+function generateSong(){
+  newProg();
+  ['intro', 'build', 'drop', 'break'].forEach((r, i) => genPattern(i, r));
+  S.chain = [0, 0, 3, 1, 2, 2, 3, 1, 2, 2, 0]; S.mode = 'song'; S.cur = 2;
+}
+
+if (fresh) defaultState();
 
 // =====================================================================
 //  UI: 상단 / 트랙 목록 / 마스터
@@ -331,7 +577,7 @@ function refreshHeader(){
   $('#bpm').value = S.bpm; $('#swing').value = S.swing; $('#bars').value = S.bars; $('#key').value = S.key; $('#scale').value = S.scale; $('#lock').checked = S.lock;
   $('#mpat').classList.toggle('on', S.mode === 'pattern'); $('#msong').classList.toggle('on', S.mode === 'song');
   const pats = $('#pats'); pats.innerHTML = '';
-  'ABCD'.split('').forEach((l, i) => pats.append(h('button', {class:'chip' + (S.cur === i ? ' on' : ''), onclick:() => { S.cur = i; refreshAll(); }}, l)));
+  'ABCD'.split('').forEach((l, i) => pats.append(h('button', {class:'chip' + (S.cur === i ? ' on' : ''), onclick:() => { S.cur = i; autoSel = 0; refreshAll(); }}, l)));
   renderChain();
 }
 function renderChain(playingCi = -1){
@@ -339,12 +585,14 @@ function renderChain(playingCi = -1){
   S.chain.forEach((p, i) => c.append(h('button', {class:'chip' + (i === playingCi ? ' play' : ''), title:'클릭하면 삭제', onclick:() => { S.chain.splice(i, 1); renderChain(); save(); }}, 'ABCD'[p])));
   if (!S.chain.length) c.append(h('span', {class:'hint'}, '(비어 있음)'));
 }
+let kbBase = 36;
+function selectTrack(i){ S.sel = i; const tr = S.tracks[i]; kbBase = tr.top ? Math.floor((tr.top - 23) / 12) * 12 : 60; renderTracks(); renderEditor(); renderSound(); renderChannel(); }
 function renderTracks(){
   const a = $('#tracks'); a.innerHTML = '';
   S.tracks.forEach((tr, i) => {
     const vol = h('input', {type:'range', min:0, max:1.2, step:.01, value:tr.vol, oninput:e => { tr.vol = +e.target.value; applyChannel(G, i); save(); }});
     vol.onclick = e => e.stopPropagation();
-    a.append(h('div', {class:'trk' + (S.sel === i ? ' sel' : ''), style:`border-left-color:${S.sel === i ? tr.color : 'transparent'}`, onclick:() => { S.sel = i; kbBase = tr.top ? Math.floor((tr.top - 23) / 12) * 12 : 60; renderTracks(); renderEditor(); renderSound(); renderChannel(); }},
+    a.append(h('div', {class:'trk' + (S.sel === i ? ' sel' : ''), style:`border-left-color:${S.sel === i ? tr.color : 'transparent'}`, onclick:() => selectTrack(i)},
       h('span', {class:'nm', style:`color:${tr.color}`}, tr.name),
       h('button', {class:tr.mute ? 'on' : '', onclick:e => { e.stopPropagation(); tr.mute = !tr.mute; applyAll(G); renderTracks(); save(); }}, 'M'),
       h('button', {class:tr.solo ? 'on' : '', onclick:e => { e.stopPropagation(); tr.solo = !tr.solo; applyAll(G); renderTracks(); save(); }}, 'S'), vol));
@@ -374,24 +622,62 @@ function renderMaster(){
 }
 
 // =====================================================================
+//  작곡 도우미 UI
+// =====================================================================
+function renderComposer(){
+  const box = $('#composer'), g = S.gen; const keep = box.open; box.innerHTML = '';
+  const sel = (opts, val, on) => h('select', {onchange:e => on(e.target.value)}, opts.map(o => h('option', {selected:o === val}, o)));
+  const chordTxt = h('span', {class:'chord'}, g.prog.map(chordName).join('  ·  '));
+  const roleSel = h('select', {}, Object.entries(ROLES).map(([k, v]) => h('option', {value:k, selected:k === g.role}, v)));
+  roleSel.onchange = () => g.role = roleSel.value;
+  box.append(h('summary', {}, 'AI 작곡 도우미 — 코드·베이스·멜로디·드럼·곡 구조 자동 추천'),
+    h('div', {class:'hint'}, '음악 이론(스케일·코드 진행·보이스 리딩·장르별 리듬) + 랜덤으로 추천해요. 마음에 안 들면 다시 눌러서 새로 뽑고, 피아노롤에서 자유롭게 고치세요.'),
+    h('div', {class:'row'}, h('span', {class:'hint'}, '장르'), sel(Object.keys(GENRES), g.genre, v => g.genre = v),
+      h('span', {class:'hint'}, '분위기'), sel(Object.keys(MOODS), g.mood, v => { g.mood = v; S.scale = MOODS[v]; refreshHeader(); }),
+      h('button', {onclick:() => { snap(); S.scale = MOODS[g.mood]; applyGenre(g.genre); applyAll(G); refreshAll(); save(); }}, '① 장르 세팅 적용 (BPM·킷·신스·믹스)'),
+      h('button', {onclick:() => { newProg(); renderComposer(); }}, '② 코드 진행 새로 뽑기'), chordTxt),
+    h('div', {class:'row'}, h('span', {class:'hint'}, '생성 대상'),
+      ...[['drums', '드럼'], ['bass', '베이스'], ['pad', '패드'], ['pluck', '플럭'], ['lead', '리드'], ['fx', 'FX']].map(([k, n]) =>
+        h('label', {}, h('input', {type:'checkbox', checked:g.targets[k], onchange:e => g.targets[k] = e.target.checked}), ' ' + n)),
+      roleSel, h('button', {onclick:() => { snap(); genPattern(S.cur, g.role); refreshAll(); save(); }}, '③ 현재 패턴 작곡'),
+      h('button', {class:'big', onclick:() => { snap(); S.scale = MOODS[g.mood]; applyGenre(g.genre); generateSong(); applyAll(G); refreshAll(); save(); }}, '★ 곡 전체 자동 생성 (인트로→빌드업→드롭→브레이크다운)')));
+  box.open = keep !== false;
+}
+
+// =====================================================================
 //  에디터 (드럼 그리드 / 피아노롤)
 // =====================================================================
-let kbBase = 36;
-function ph(){ return h('div', {class:'ph'}); }
+const ph = () => h('div', {class:'ph'});
 function renderEditor(){
   const box = $('#editor'), tr = S.tracks[S.sel]; box.innerHTML = '';
-  if (tr.type === 'drums') return renderDrums(box, tr);
-  renderRoll(box, tr);
+  if (tr.type === 'drums') renderDrums(box, tr); else renderRoll(box, tr);
+}
+const KIT_KEYS = [[/open|oh|ophat/i, 4], [/kick|bd|킥/i, 0], [/snare|sd|스네어/i, 1], [/clap|cp|클랩/i, 2], [/hat|hh|closed|ch|햇/i, 3], [/rim|rs|림/i, 5], [/perc|tom|conga|shaker|탐/i, 6]];
+async function loadDrumSample(li, file){
+  try {
+    const data = await file.arrayBuffer(); drumBufs[li] = await ctx.decodeAudioData(data.slice(0));
+    S.tracks[T.DR].lanes[li].smp = file.name; await idb.put('d' + li, {name:file.name, data}); save();
+  } catch(e){ alert(file.name + ' 을(를) 읽을 수 없어요.'); }
 }
 function renderDrums(box, tr){
   const steps = P();
-  box.append(h('h3', {}, '드럼 스텝 시퀀서'), h('div', {class:'hint', style:'margin-bottom:6px'}, '클릭/드래그: 찍기·지우기 · Shift+클릭: 강하게(액센트) · Alt+클릭: 약하게(고스트노트) · 레인 이름 클릭: 미리듣기. 슬라이더는 볼륨 / 튠 / 감쇠.'));
+  const kitSel = h('select', {onchange:e => { S.kit = e.target.value; save(); }}, Object.keys(KITS).map(k => h('option', {selected:k === S.kit}, k)));
+  const multi = h('input', {type:'file', accept:'audio/*', multiple:true, hidden:true, onchange:async e => {
+    const miss = []; for (const f of e.target.files){ const m = KIT_KEYS.find(([re]) => re.test(f.name)); if (m) await loadDrumSample(m[1], f); else miss.push(f.name); }
+    if (miss.length) alert('이름으로 레인을 알 수 없어 건너뛴 파일:\n' + miss.join('\n') + '\n\n(파일명에 kick/snare/clap/hat/open/rim/perc 가 들어가면 자동으로 배정돼요. 레인 옆 ⤒ 버튼으로 직접 넣을 수도 있어요.)');
+    e.target.value = ''; renderEditor(); }});
+  box.append(h('div', {class:'row'}, h('h3', {style:'margin:0'}, '드럼 스텝 시퀀서'), h('span', {class:'hint'}, '합성 킷'), kitSel,
+    h('label', {class:'btn'}, '킷 샘플 여러 개 한 번에 불러오기', multi),
+    h('button', {onclick:async () => { for (let i = 0; i < LANES.length; i++){ delete drumBufs[i]; S.tracks[T.DR].lanes[i].smp = ''; await idb.del('d' + i); } renderEditor(); save(); }}, '샘플 모두 제거')),
+    h('div', {class:'hint', style:'margin:6px 0'}, '클릭/드래그: 찍기·지우기 · Shift+클릭: 강하게 · Alt+클릭: 약하게(고스트) · 레인 이름: 미리듣기 · ⤒: 이 레인에 내 샘플 넣기(브라우저에 저장돼요) · 슬라이더: 볼륨/튠/감쇠'));
   const lanes = h('div', {class:'lanes'});
   LANES.forEach(([nm], li) => {
     const L = tr.lanes[li];
     lanes.append(h('div', {class:'lane'},
-      h('button', {class:'ln', onclick:() => { ctx.resume(); playDrum(G, S.sel, li, ctx.currentTime + .01, .9); }}, nm),
+      h('button', {class:'ln', title:L.smp ? '샘플: ' + L.smp : '합성음', onclick:() => { ctx.resume(); playDrum(G, S.sel, li, ctx.currentTime + .01, .9); }}, nm + (drumBufs[li] ? ' •' : '')),
       h('button', {class:L.mute ? 'on' : '', onclick:e => { L.mute = !L.mute; e.target.classList.toggle('on', L.mute); save(); }}, 'M'),
+      h('label', {class:'btn', title:'이 레인에 샘플 넣기'}, '⤒', h('input', {type:'file', accept:'audio/*', hidden:true, onchange:async e => { if (e.target.files[0]){ await loadDrumSample(li, e.target.files[0]); renderEditor(); } }})),
+      h('button', {title:'샘플 제거(합성음으로 복귀)', onclick:async () => { delete drumBufs[li]; L.smp = ''; await idb.del('d' + li); renderEditor(); save(); }}, '✕'),
       h('input', {type:'range', min:0, max:1.3, step:.01, value:L.vol, title:'볼륨', oninput:e => { L.vol = +e.target.value; save(); }}),
       h('input', {type:'range', min:-12, max:12, step:1, value:L.tune, title:'튠(반음)', oninput:e => { L.tune = +e.target.value; save(); }}),
       h('input', {type:'range', min:.3, max:2.5, step:.05, value:L.dec, title:'감쇠 길이', oninput:e => { L.dec = +e.target.value; save(); }})));
@@ -400,16 +686,12 @@ function renderDrums(box, tr){
   box.append(h('div', {class:'ed'}, lanes, h('div', {class:'scroll'}, inner)));
   const data = () => curPat()[S.sel];
   const draw = () => {
-    const g = cv.getContext('2d'), d = data();
-    g.clearRect(0, 0, cv.width, cv.height);
-    for (let li = 0; li < LANES.length; li++){
-      for (let s = 0; s < steps; s++){
-        const x = s * CELL, y = li * LANE_H, v = d[li][s];
-        g.fillStyle = Math.floor(s / 4) % 2 ? '#1a0f14' : '#140b10'; g.fillRect(x, y, CELL, LANE_H);
-        if (v > 0){ g.fillStyle = `rgba(209,58,102,${.3 + .7 * v})`; g.fillRect(x + 2, y + 3, CELL - 4, LANE_H - 6); }
-      }
+    const g = cv.getContext('2d'), d = data(); g.clearRect(0, 0, cv.width, cv.height);
+    for (let li = 0; li < LANES.length; li++) for (let s = 0; s < steps; s++){
+      const x = s * CELL, y = li * LANE_H, v = d[li][s];
+      g.fillStyle = Math.floor(s / 4) % 2 ? '#1a0f14' : '#140b10'; g.fillRect(x, y, CELL, LANE_H);
+      if (v > 0){ g.fillStyle = `rgba(209,58,102,${.3 + .7 * v})`; g.fillRect(x + 2, y + 3, CELL - 4, LANE_H - 6); }
     }
-    g.strokeStyle = '#2a1520'; g.lineWidth = 1;
     for (let s = 0; s <= steps; s++){ g.strokeStyle = s % 16 === 0 ? '#7a3a4a' : s % 4 === 0 ? '#3a1d28' : '#22121a'; g.beginPath(); g.moveTo(s * CELL + .5, 0); g.lineTo(s * CELL + .5, cv.height); g.stroke(); }
     for (let li = 1; li < LANES.length; li++){ g.strokeStyle = '#22121a'; g.beginPath(); g.moveTo(0, li * LANE_H + .5); g.lineTo(cv.width, li * LANE_H + .5); g.stroke(); }
   };
@@ -419,32 +701,31 @@ function renderDrums(box, tr){
   cv.onpointerdown = e => {
     const c = cell(e), cur = data()[c.li][c.s]; snap(); cv.setPointerCapture(e.pointerId);
     const v = e.shiftKey ? 1 : e.altKey ? .4 : (cur ? 0 : .8); paint = v; setCell(c, v);
-    if (v > 0 && !playing) { ctx.resume(); playDrum(G, S.sel, c.li, ctx.currentTime + .01, v); }
+    if (v > 0 && !playing){ ctx.resume(); playDrum(G, S.sel, c.li, ctx.currentTime + .01, v); }
   };
   cv.onpointermove = e => { if (paint != null) setCell(cell(e), paint); };
   cv.onpointerup = cv.onpointercancel = () => { paint = null; };
-  draw(); box.redraw = draw; renderEditor.redraw = draw;
+  draw();
 }
 function renderRoll(box, tr){
   const steps = P(), ti = S.sel, top = () => tr.top, H = ROWS * RH;
   const sc = SCALES[S.scale] || SCALES['크로매틱 (제한 없음)'];
   const inScale = m => sc.includes(((m - S.key) % 12 + 12) % 12);
   const snapPitch = m => { if (!S.lock) return m; for (let d = 0; d < 12; d++){ if (inScale(m - d)) return m - d; if (inScale(m + d)) return m + d; } return m; };
-  const hintTxt = tr.type === 'sample' && tr.smp.mode === 'slice' ? '슬라이스 모드: C4(60)부터 16개 건반이 샘플의 1~16번째 조각이에요.' : '클릭: 노트 추가(드래그로 길이) · 노트 클릭: 삭제 · 노트 드래그: 이동 · 노트 오른쪽 끝 드래그: 길이 · 우클릭: 삭제 · 키보드 A~K: 미리듣기(Z/X 옥타브)';
+  const slice = tr.type === 'sample' && tr.smp.mode === 'slice';
+  const hintTxt = slice ? '슬라이스 모드: C4(60)부터 16개 건반이 샘플의 1~16번째 조각이에요.' : '클릭: 노트 추가(드래그로 길이) · 노트 클릭: 삭제 · 드래그: 이동 · 오른쪽 끝 드래그: 길이 · 우클릭: 삭제 · Shift+휠: 위아래 스크롤 · 키보드 A~K 미리듣기(Z/X 옥타브)';
   box.append(h('div', {class:'row', style:'margin-bottom:6px'}, h('h3', {style:'margin:0'}, tr.name + ' 피아노롤'),
     h('label', {class:'grp'}, h('span', {class:'hint'}, '새 노트 길이'), h('select', {onchange:e => S.noteLen = +e.target.value},
       [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, '1마디']].map(([v, n]) => h('option', {value:v, selected:v === S.noteLen}, n)))),
     h('button', {onclick:() => { tr.top = clamp(tr.top + 12, 47, 107); renderEditor(); }}, '▲ 옥타브'),
-    h('button', {onclick:() => { tr.top = clamp(tr.top - 12, 47, 107); renderEditor(); }}, '▼ 옥타브'),
-    h('span', {class:'hint'}, hintTxt)));
+    h('button', {onclick:() => { tr.top = clamp(tr.top - 12, 47, 107); renderEditor(); }}, '▼ 옥타브'), h('span', {class:'hint'}, hintTxt)));
   const keys = h('canvas', {id:'keys', width:56, height:H}), cv = h('canvas', {width:steps * CELL, height:H}), inner = h('div', {class:'inner'}, cv, ph());
   box.append(h('div', {class:'ed'}, keys, h('div', {class:'scroll'}, inner)));
   const drawKeys = () => {
     const g = keys.getContext('2d'); g.clearRect(0, 0, 56, H); g.font = '11px sans-serif';
     for (let r = 0; r < ROWS; r++){
-      const m = top() - r; g.fillStyle = isBlack(m) ? '#25141b' : '#e9dde1'; g.fillRect(0, r * RH, 56, RH - 1);
-      if (m % 12 === 0 || (tr.type === 'sample' && tr.smp.mode === 'slice' && m >= 60 && m <= 75)){
-        g.fillStyle = isBlack(m) ? '#aaa' : '#444'; g.fillText(tr.type === 'sample' && tr.smp.mode === 'slice' && m >= 60 && m <= 75 ? '조각' + (m - 59) : noteName(m), 4, r * RH + 12); }
+      const m = top() - r, sl = slice && m >= 60 && m <= 75; g.fillStyle = isBlack(m) ? '#25141b' : '#e9dde1'; g.fillRect(0, r * RH, 56, RH - 1);
+      if (m % 12 === 0 || sl){ g.fillStyle = isBlack(m) ? '#aaa' : '#444'; g.fillText(sl ? '조각' + (m - 59) : noteName(m), 4, r * RH + 12); }
     }
   };
   const notes = () => curPat()[ti];
@@ -454,8 +735,7 @@ function renderRoll(box, tr){
       const m = top() - r; g.fillStyle = isBlack(m) ? '#0f080b' : '#160d11';
       if (inScale(m)) g.fillStyle = isBlack(m) ? '#1b0f15' : '#22131a';
       if (((m - S.key) % 12 + 12) % 12 === 0) g.fillStyle = '#2d1722';
-      g.fillRect(0, r * RH, cv.width, RH);
-      g.fillStyle = '#1b0e14'; g.fillRect(0, r * RH + RH - 1, cv.width, 1);
+      g.fillRect(0, r * RH, cv.width, RH); g.fillStyle = '#1b0e14'; g.fillRect(0, r * RH + RH - 1, cv.width, 1);
     }
     for (let s = 0; s <= steps; s++){ g.fillStyle = s % 16 === 0 ? '#7a3a4a' : s % 4 === 0 ? '#3a1d28' : '#1e1018'; g.fillRect(s * CELL, 0, 1, H); }
     notes().forEach(n => {
@@ -472,7 +752,7 @@ function renderRoll(box, tr){
     const p = at(e), list = notes(); snap(); cv.setPointerCapture(e.pointerId);
     const hit = list.find(n => n.n === p.m && p.s >= n.s && p.s < n.s + n.l);
     if (e.button === 2){ if (hit){ list.splice(list.indexOf(hit), 1); draw(); save(); } return; }
-    if (hit){ drag = p.x > (hit.s + hit.l) * CELL - 8 ? {k:'resize', n:hit} : {k:'move', n:hit, off:p.s - hit.s, moved:false}; }
+    if (hit) drag = p.x > (hit.s + hit.l) * CELL - 8 ? {k:'resize', n:hit} : {k:'move', n:hit, off:p.s - hit.s, moved:false};
     else { const n = {s:p.s, l:Math.min(S.noteLen, steps - p.s), n:snapPitch(p.m), v:.8}; list.push(n); drag = {k:'resize', n, s0:p.s, create:true}; prev(n.n); draw(); save(); }
   };
   cv.onpointermove = e => {
@@ -486,59 +766,110 @@ function renderRoll(box, tr){
     drag = null;
   };
   keys.onclick = e => prev(top() - Math.floor(e.offsetY / RH));
-  cv.parentElement.parentElement.addEventListener('wheel', e => { if (e.shiftKey){ e.preventDefault(); tr.top = clamp(tr.top + (e.deltaY < 0 ? 1 : -1) * 3, 47, 107); drawKeys(); draw(); } }, {passive:false});
-  drawKeys(); draw(); renderEditor.redraw = draw;
+  box.addEventListener('wheel', e => { if (e.shiftKey){ e.preventDefault(); tr.top = clamp(tr.top + (e.deltaY < 0 ? 1 : -1) * 3, 47, 107); drawKeys(); draw(); } }, {passive:false});
+  drawKeys(); draw();
+}
+
+// =====================================================================
+//  오토메이션 에디터
+// =====================================================================
+function renderAuto(){
+  const box = $('#auto'), keep = box.open; box.innerHTML = '';
+  const lanes = S.autos.filter(a => a.pat === S.cur), steps = P();
+  if (autoSel >= lanes.length) autoSel = Math.max(0, lanes.length - 1);
+  const opts = []; S.tracks.forEach((tr, i) => Object.entries(AUTO).forEach(([k, d]) => { if (!d.master && (tr.type !== 'drums' || k !== 'pan' || true)) opts.push({tr:i, p:k, label:tr.name + ' · ' + d.label}); }));
+  Object.entries(AUTO).forEach(([k, d]) => { if (d.master) opts.push({tr:-1, p:k, label:'마스터 · ' + d.label.replace('마스터 ', '')}); });
+  const tgt = h('select', {}, opts.map((o, i) => h('option', {value:i}, o.label)));
+  const laneSel = h('select', {onchange:e => { autoSel = +e.target.value; renderAuto(); }}, lanes.map((a, i) => h('option', {value:i, selected:i === autoSel}, (a.tr < 0 ? '마스터' : S.tracks[a.tr].name) + ' · ' + AUTO[a.p].label)));
+  box.append(h('summary', {}, '오토메이션 (현재 패턴 ' + 'ABCD'[S.cur] + ') — 시간에 따라 필터·볼륨·센드를 움직이기'),
+    h('div', {class:'row'}, tgt, h('button', {onclick:() => { const o = opts[+tgt.value]; snap(); S.autos.push({pat:S.cur, tr:o.tr, p:o.p, pts:[{s:0, v:0}, {s:steps, v:1}]}); autoSel = S.autos.filter(a => a.pat === S.cur).length - 1; renderAuto(); save(); }}, '+ 레인 추가'),
+      lanes.length ? laneSel : h('span', {class:'hint'}, '(레인 없음)'),
+      lanes.length ? h('button', {onclick:() => { snap(); S.autos.splice(S.autos.indexOf(lanes[autoSel]), 1); autoSel = 0; renderAuto(); save(); }}, '레인 삭제') : null,
+      ...(lanes.length ? [['↗ 상승', s => [{s:0, v:0}, {s, v:1}]], ['↘ 하강', s => [{s:0, v:1}, {s, v:0}]], ['△ 삼각파', s => { const a = []; for (let i = 0; i <= 8; i++) a.push({s:s * i / 8, v:i % 2 ? 1 : 0}); return a; }]].map(([n, f]) =>
+        h('button', {onclick:() => { snap(); lanes[autoSel].pts = f(steps); renderAuto(); save(); }}, n)) : [])));
+  if (!lanes.length) { box.append(h('div', {class:'hint', style:'margin-top:8px'}, '예) 마스터 · 로우컷 레인을 추가하고 ↗ 상승을 누르면 빌드업에서 점점 저음이 빠지는 스윕이 돼요. 클릭: 점 추가 · 드래그: 이동 · 우클릭: 점 삭제.')); box.open = keep !== false; return; }
+  const a = lanes[autoSel], def = AUTO[a.p], Hh = 120, cv = h('canvas', {width:steps * CELL, height:Hh}), inner = h('div', {class:'inner', style:'margin-top:8px'}, cv, ph());
+  box.append(h('div', {class:'scroll'}, inner), h('div', {class:'hint'}, `값 범위: ${hz(def.min)} ~ ${hz(def.max)}${def.log ? ' (로그 스케일)' : ''}`));
+  const draw = () => {
+    const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, Hh); g.fillStyle = '#140b10'; g.fillRect(0, 0, cv.width, Hh);
+    for (let s = 0; s <= steps; s++){ g.fillStyle = s % 16 === 0 ? '#7a3a4a' : s % 4 === 0 ? '#3a1d28' : '#1e1018'; g.fillRect(s * CELL, 0, 1, Hh); }
+    const xy = p => [p.s * CELL, Hh * (1 - p.v)];
+    g.beginPath(); g.moveTo(0, Hh); const f0 = evalCurve(a.pts, 0); g.lineTo(0, Hh * (1 - f0));
+    a.pts.forEach(p => g.lineTo(...xy(p))); g.lineTo(cv.width, Hh * (1 - evalCurve(a.pts, steps))); g.lineTo(cv.width, Hh); g.closePath(); g.fillStyle = 'rgba(122,21,48,.5)'; g.fill();
+    g.beginPath(); g.moveTo(0, Hh * (1 - f0)); a.pts.forEach(p => g.lineTo(...xy(p))); g.lineTo(cv.width, Hh * (1 - evalCurve(a.pts, steps))); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    a.pts.forEach(p => { const [x, y] = xy(p); g.beginPath(); g.arc(x, y, 6, 0, 7); g.fillStyle = '#d13a66'; g.fill(); });
+  };
+  let dragP = null;
+  const near = e => { let bi = null, bd = 14; a.pts.forEach(p => { const d = Math.hypot(p.s * CELL - e.offsetX, Hh * (1 - p.v) - e.offsetY); if (d < bd){ bd = d; bi = p; } }); return bi; };
+  const pos = e => ({s:clamp(Math.round(e.offsetX / CELL * 4) / 4, 0, steps), v:clamp(1 - e.offsetY / Hh, 0, 1)});
+  cv.oncontextmenu = e => e.preventDefault();
+  cv.onpointerdown = e => {
+    snap(); cv.setPointerCapture(e.pointerId); const n = near(e);
+    if (e.button === 2){ if (n && a.pts.length > 1) a.pts.splice(a.pts.indexOf(n), 1); draw(); save(); return; }
+    if (n) dragP = n; else { dragP = pos(e); a.pts.push(dragP); }
+    a.pts.sort((x, y) => x.s - y.s); draw(); save();
+  };
+  cv.onpointermove = e => { if (!dragP) return; Object.assign(dragP, pos(e)); a.pts.sort((x, y) => x.s - y.s); draw(); save(); };
+  cv.onpointerup = cv.onpointercancel = () => { dragP = null; };
+  draw(); box.open = keep !== false;
 }
 
 // =====================================================================
 //  사운드 / 채널 패널
 // =====================================================================
 const SYN_UI = [
-  ['wave', '파형', 'sel', ['sawtooth', 'square', 'sine', 'triangle']],
-  ['uni', '유니즌 개수', 1, 7, 1], ['spread', '디튠 폭(센트)', 0, 80, 1], ['sub', '서브 옥타브', 0, 1, .01],
-  ['cut', '컷오프', 40, 18000, 'log'], ['res', '레조넌스', .1, 18, .1], ['envAmt', '필터 엔벨로프(옥타브)', 0, 6, .1], ['fdec', '필터 감쇠(초)', .02, 2.5, .01],
-  ['lfoRate', 'LFO 속도(Hz)', .05, 20, 'log'], ['lfoDepth', 'LFO 깊이(센트)', 0, 2400, 1],
-  ['a', '어택', .002, 2, 'log'], ['d', '디케이', .01, 2.5, 'log'], ['s', '서스테인', 0, 1, .01], ['r', '릴리즈', .02, 4, 'log'], ['gain', '게인', 0, 1, .01]];
+  ['hd', '오실레이터'], ['wave', '파형', 'sel', ['sawtooth', 'square', 'sine', 'triangle']], ['osc', '오실레이터 레벨', 0, 1, .01], ['uni', '유니즌 개수', 1, 7, 1], ['spread', '디튠 폭(센트)', 0, 80, 1], ['width', '스테레오 폭', 0, 1, .01],
+  ['wave2', '파형 2 (레이어)', 'sel', ['off', 'sawtooth', 'square', 'sine', 'triangle']], ['o2', '레이어 2 옥타브', -2, 2, 1], ['l2', '레이어 2 레벨', 0, 1, .01], ['det2', '레이어 2 디튠', 0, 40, 1],
+  ['sub', '서브 옥타브', 0, 1, .01], ['noise', '노이즈', 0, 1, .01],
+  ['hd', '필터'], ['ftype', '필터 종류', 'sel', ['lowpass', 'highpass', 'bandpass']], ['cut', '컷오프', 40, 18000, 'log'], ['res', '레조넌스', .1, 18, .1], ['envAmt', '필터 엔벨로프(옥타브, 음수=위로 스윕)', -6, 6, .1],
+  ['fdec', '필터 감쇠(초)', .02, 12, 'log'], ['kt', '키 트래킹', 0, 1, .01],
+  ['hd', 'LFO'], ['lfoTarget', 'LFO 대상', 'sel', ['cut', 'pitch', 'amp']], ['lfoShape', 'LFO 파형', 'sel', ['sine', 'triangle', 'square', 'sawtooth']], ['lfoRate', 'LFO 속도(Hz)', .05, 20, 'log'], ['lfoDepth', 'LFO 깊이', 0, 2400, 1],
+  ['hd', '엔벨로프 / 출력'], ['a', '어택', .002, 8, 'log'], ['d', '디케이', .01, 4, 'log'], ['s', '서스테인', 0, 1, .01], ['r', '릴리즈', .02, 6, 'log'], ['gain', '게인', 0, 1, .01]];
 function renderSound(){
   const box = $('#sound'), tr = S.tracks[S.sel]; box.innerHTML = '';
-  if (tr.type === 'drums'){ box.append(h('h3', {}, '드럼 킷'), h('div', {class:'hint'}, '드럼은 코드 없이 합성음으로 만들어져요. 각 레인의 볼륨 / 튠 / 감쇠 슬라이더로 소리를 다듬고, 아래 채널에서 EQ·센드·사이드체인을 조절하세요.')); return; }
+  if (tr.type === 'drums'){ box.append(h('h3', {}, '드럼 킷'), h('div', {class:'hint'}, '합성 킷을 고르거나 레인마다 내 샘플(⤒)을 넣을 수 있어요. 아래 채널에서 EQ·컴프·이펙트·센드·사이드체인을 조절하세요.')); return; }
   if (tr.type === 'sample'){
     const sm = tr.smp, nameEl = h('span', {class:'hint'}, sm.name ? sm.name + (sampleBufs[S.sel] ? '' : ' (다시 불러와 주세요)') : '샘플 없음');
     box.append(h('h3', {}, '샘플러'), h('div', {class:'row'},
       h('label', {class:'btn'}, '샘플 불러오기', h('input', {type:'file', accept:'audio/*', hidden:true, onchange:async e => {
         const f = e.target.files[0]; if (!f) return;
-        try { sampleBufs[S.sel] = await ctx.decodeAudioData(await f.arrayBuffer()); sm.name = f.name; renderSound(); save(); } catch(err){ nameEl.textContent = '불러오기 실패'; } }})),
+        try { const data = await f.arrayBuffer(); sampleBufs[S.sel] = await ctx.decodeAudioData(data.slice(0)); sm.name = f.name; await idb.put('s' + S.sel, {name:f.name, data}); renderSound(); save(); } catch(err){ nameEl.textContent = '불러오기 실패'; } }})),
       nameEl,
       h('label', {class:'grp'}, h('span', {class:'hint'}, '원곡 BPM(0=무시)'), h('input', {type:'number', min:0, max:300, step:.1, value:sm.origBpm, onchange:e => { sm.origBpm = +e.target.value || 0; save(); }})),
       h('select', {onchange:e => { sm.mode = e.target.value; renderEditor(); save(); }}, [['slice', '슬라이스 모드 (16등분)'], ['pitch', '피치 모드 (건반으로 연주)']].map(([v, n]) => h('option', {value:v, selected:sm.mode === v}, n))),
       h('label', {}, h('input', {type:'checkbox', checked:sm.full, onchange:e => { sm.full = e.target.checked; save(); }}), ' 끝까지 재생(원샷)')),
-      h('div', {class:'params', style:'margin-top:8px'},
-        slider({label:'시작 위치(피치모드)', min:0, max:.95, get:() => sm.start, set:v => sm.start = v}),
-        slider({label:'게인', min:0, max:1.5, get:() => sm.gain, set:v => sm.gain = v})),
-      h('div', {class:'hint', style:'margin-top:6px'}, '원곡 BPM을 넣으면 프로젝트 BPM에 맞춰 속도가 같이 바뀌어요(피치도 함께 변해요). 브레이크비트를 16등분해서 노트로 재배열해 보세요.'));
+      h('div', {class:'params', style:'margin-top:8px'}, slider({label:'시작 위치(피치모드)', min:0, max:.95, get:() => sm.start, set:v => sm.start = v}), slider({label:'게인', min:0, max:1.5, get:() => sm.gain, set:v => sm.gain = v})),
+      h('div', {class:'hint', style:'margin-top:6px'}, '원곡 BPM을 넣으면 프로젝트 BPM에 맞춰 속도가 바뀌어요(피치도 함께). 브레이크를 16등분해서 노트로 재배열해 보세요. 불러온 샘플은 브라우저에 저장돼요.'));
     return;
   }
-  const p = tr.syn, pre = h('select', {onchange:e => { if (e.target.value){ Object.assign(p, SYN_PRESETS[e.target.value]); renderSound(); save(); } }},
+  const p = tr.syn, pre = h('select', {onchange:e => { if (e.target.value){ tr.syn = {...SYN_PRESETS[e.target.value]}; renderSound(); save(); } }},
     h('option', {value:''}, '프리셋 불러오기…'), Object.keys(SYN_PRESETS).map(n => h('option', {}, n)));
   box.append(h('div', {class:'row', style:'margin-bottom:8px'}, h('h3', {style:'margin:0'}, tr.name + ' 신스'), pre));
   const grid = h('div', {class:'params'});
   SYN_UI.forEach(([k, lb, a, b, c]) => {
-    if (a === 'sel') grid.append(h('label', {class:'sl'}, h('span', {class:'lb'}, lb), h('select', {onchange:e => { p[k] = e.target.value; save(); }}, b.map(o => h('option', {selected:p[k] === o}, o))), h('span')));
+    if (k === 'hd') grid.append(h('div', {class:'hd'}, lb));
+    else if (a === 'sel') grid.append(h('label', {class:'sl'}, h('span', {class:'lb'}, lb), h('select', {onchange:e => { p[k] = e.target.value; save(); }}, b.map(o => h('option', {selected:p[k] === o}, o))), h('span')));
     else grid.append(slider({label:lb, min:a, max:b, step:c === 'log' ? .01 : c, log:c === 'log', get:() => p[k], set:v => p[k] = k === 'uni' ? Math.round(v) : v,
-      fmt:k === 'cut' ? hz : (v => +(+v).toFixed(k === 'lfoRate' || k === 'a' || k === 'd' || k === 'r' ? 2 : 1))}));
+      fmt:k === 'cut' ? hz : (v => +(+v).toFixed(['lfoRate', 'a', 'd', 'r', 'fdec'].includes(k) ? 2 : 1))}));
   });
   box.append(grid);
 }
-const CH_UI = [['pan', '팬', -1, 1, .01], ['hpf', '로우컷', 20, 2000, 'log', hz], ['ls', '저음(100Hz)', -18, 18, .5, db], ['m1f', '중음1 주파수', 100, 2000, 'log', hz], ['m1g', '중음1 게인', -18, 18, .5, db], ['m1q', '중음1 Q', .2, 10, .1],
+const CH_UI = [['hd', 'EQ / 필터'], ['pan', '팬', -1, 1, .01], ['hpf', '로우컷', 20, 2000, 'log', hz], ['ls', '저음(100Hz)', -18, 18, .5, db], ['m1f', '중음1 주파수', 100, 2000, 'log', hz], ['m1g', '중음1 게인', -18, 18, .5, db], ['m1q', '중음1 Q', .2, 10, .1],
   ['m2f', '중음2 주파수', 800, 10000, 'log', hz], ['m2g', '중음2 게인', -18, 18, .5, db], ['m2q', '중음2 Q', .2, 10, .1], ['hs', '고음(8kHz)', -18, 18, .5, db], ['lpf', '하이컷', 1000, 20000, 'log', hz],
-  ['dly', '딜레이 센드', 0, 1, .01], ['rev', '리버브 센드', 0, 1, .01], ['duck', '사이드체인(킥에 눌림)', 0, 1, .01]];
+  ['hd', '컴프레서'], ['cth', '스레숄드(dB)', -60, 0, .5], ['cratio', '레이쇼', 1, 20, .1], ['catt', '어택(초)', .001, .1, .001], ['crel', '릴리즈(초)', .02, 1, .01], ['cmk', '메이크업(dB)', 0, 18, .5],
+  ['hd', '이펙트'], ['drive', '드라이브(새츄레이션)', 0, 1, .01], ['chor', '코러스', 0, 1, .01], ['gate', '리듬 게이트 깊이', 0, 1, .01],
+  ['hd', '센드 / 사이드체인'], ['dly', '딜레이 센드', 0, 1, .01], ['rev', '리버브 센드', 0, 1, .01], ['duck', '사이드체인(킥에 눌림)', 0, 1, .01]];
 function renderChannel(){
   const box = $('#channel'), tr = S.tracks[S.sel], c = tr.ch; box.innerHTML = '';
   const grid = h('div', {class:'params'});
-  CH_UI.forEach(([k, lb, a, b, st, fmt]) => grid.append(slider({label:lb, min:a, max:b, step:st === 'log' ? .01 : st, log:st === 'log', fmt, get:() => c[k], set:v => { c[k] = v; applyChannel(G, S.sel); }})));
-  box.append(h('div', {class:'row', style:'margin-bottom:8px'}, h('h3', {style:'margin:0'}, tr.name + ' 채널 (EQ · 센드)'), h('button', {onclick:() => { tr.ch = defCh(); applyChannel(G, S.sel); renderChannel(); save(); }}, '채널 초기화')), grid);
+  CH_UI.forEach(([k, lb, a, b, st, fmt]) => {
+    if (k === 'hd'){ grid.append(h('div', {class:'hd'}, lb)); return; }
+    grid.append(slider({label:lb, min:a, max:b, step:st === 'log' ? .01 : st, log:st === 'log', fmt, get:() => c[k], set:v => { c[k] = v; applyChannel(G, S.sel); }}));
+    if (k === 'gate') grid.append(h('label', {class:'sl'}, h('span', {class:'lb'}, '게이트 패턴'), h('select', {onchange:e => { c.gatePat = +e.target.value; save(); }}, GATE_PATS.map((g, i) => h('option', {value:i, selected:i === c.gatePat}, g.n))), h('span')));
+  });
+  box.append(h('div', {class:'row', style:'margin-bottom:8px'}, h('h3', {style:'margin:0'}, tr.name + ' 채널 (EQ · 컴프 · 이펙트 · 센드)'), h('button', {onclick:() => { tr.ch = defCh(); applyChannel(G, S.sel); renderChannel(); save(); }}, '채널 초기화')), grid);
 }
-function refreshAll(){ refreshHeader(); renderTracks(); renderEditor(); renderSound(); renderChannel(); renderMaster(); }
+function refreshAll(){ refreshHeader(); renderComposer(); renderTracks(); renderEditor(); renderAuto(); renderSound(); renderChannel(); renderMaster(); }
 
 // =====================================================================
 //  상단 컨트롤 연결
@@ -548,25 +879,25 @@ $('#scale').append(...Object.keys(SCALES).map(n => h('option', {}, n)));
 $('#play').onclick = togglePlay;
 $('#bpm').onchange = e => { S.bpm = clamp(+e.target.value || 120, 40, 260); applyMaster(G); refreshHeader(); save(); };
 $('#swing').oninput = e => { S.swing = +e.target.value; save(); };
-$('#bars').onchange = e => { S.bars = +e.target.value; renderEditor(); save(); };
-$('#key').onchange = e => { S.key = +e.target.value; renderEditor(); save(); };
-$('#scale').onchange = e => { S.scale = e.target.value; renderEditor(); save(); };
+$('#bars').onchange = e => { S.bars = +e.target.value; renderEditor(); renderAuto(); save(); };
+$('#key').onchange = e => { S.key = +e.target.value; renderEditor(); renderComposer(); save(); };
+$('#scale').onchange = e => { S.scale = e.target.value; renderEditor(); renderComposer(); save(); };
 $('#lock').onchange = e => { S.lock = e.target.checked; save(); };
 $('#mpat').onclick = () => { S.mode = 'pattern'; refreshHeader(); save(); };
 $('#msong').onclick = () => { S.mode = 'song'; refreshHeader(); save(); };
 $('#chadd').onclick = () => { S.chain.push(S.cur); renderChain(); save(); };
 $('#chclr').onclick = () => { S.chain = []; renderChain(); save(); };
 let clip = null, taps = [];
-$('#pcopy').onclick = () => { clip = JSON.stringify(curPat()); };
-$('#ppaste').onclick = () => { if (clip){ snap(); S.pats[S.cur] = JSON.parse(clip); renderEditor(); save(); } };
-$('#pclear').onclick = () => { snap(); S.pats[S.cur] = emptyPat(S); renderEditor(); save(); };
+$('#pcopy').onclick = () => { clip = JSON.stringify({p:curPat(), a:S.autos.filter(a => a.pat === S.cur)}); };
+$('#ppaste').onclick = () => { if (clip){ snap(); const o = JSON.parse(clip); S.pats[S.cur] = o.p; S.autos = S.autos.filter(a => a.pat !== S.cur).concat(o.a.map(a => ({...a, pat:S.cur}))); refreshAll(); save(); } };
+$('#pclear').onclick = () => { snap(); S.pats[S.cur] = emptyPat(S); S.autos = S.autos.filter(a => a.pat !== S.cur); refreshAll(); save(); };
 $('#tap').onclick = () => { const t = performance.now(); if (taps.length && t - taps.at(-1) > 2000) taps = []; taps.push(t); taps = taps.slice(-8);
   if (taps.length > 2){ S.bpm = Math.round((taps.length - 1) * 60000 / (taps.at(-1) - taps[0])); applyMaster(G); refreshHeader(); save(); } };
 $('#undo').onclick = () => { if (undoStack.length){ redoStack.push(JSON.stringify(S)); restore(undoStack.pop()); } };
 $('#redo').onclick = () => { if (redoStack.length){ undoStack.push(JSON.stringify(S)); restore(redoStack.pop()); } };
-$('#save').onclick = () => { const a = h('a', {href:URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], {type:'application/json'})), download:'my-song.json'}); a.click(); };
-$('#load').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const o = JSON.parse(await f.text()); if (o.tracks && o.tracks.length === 5){ snap(); S = o; refreshAll(); applyAll(G); save(); } } catch(err){ alert('프로젝트 파일을 읽을 수 없어요.'); } e.target.value = ''; };
-$('#newp').onclick = () => { if (confirm('새 프로젝트를 시작할까요? (현재 작업은 저장 안 하면 사라져요. 되돌리기로 복구 가능)')){ stop(); snap(); S = defaultState(); refreshAll(); applyAll(G); save(); } };
+$('#save').onclick = () => { h('a', {href:URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], {type:'application/json'})), download:'my-song.json'}).click(); };
+$('#load').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const o = JSON.parse(await f.text()); if (o.tracks && o.tracks.length === 7){ snap(); S = o; refreshAll(); applyAll(G); save(); } else alert('이 버전과 호환되지 않는 프로젝트예요.'); } catch(err){ alert('프로젝트 파일을 읽을 수 없어요.'); } e.target.value = ''; };
+$('#newp').onclick = () => { if (confirm('새 프로젝트를 시작할까요? (되돌리기로 복구 가능)')){ stop(); snap(); defaultState(); refreshAll(); applyAll(G); save(); } };
 
 // ---- WAV 내보내기 (오프라인 렌더) ----
 function encodeWav(buf){
@@ -613,7 +944,7 @@ const meterBuf = new Float32Array(1024);
   if (playing){
     while (uiQ.length && uiQ[0].t <= ctx.currentTime){
       const q = uiQ.shift(); shownStep = q.pos.step;
-      if (S.mode === 'song' && q.pos.pat !== S.cur){ S.cur = q.pos.pat; refreshHeader(); renderEditor(); }
+      if (S.mode === 'song' && q.pos.pat !== S.cur){ S.cur = q.pos.pat; refreshHeader(); renderEditor(); renderAuto(); }
       renderChain(q.pos.ci);
     }
     document.querySelectorAll('.ph').forEach(e => { if (shownStep >= 0){ e.style.display = 'block'; e.style.left = shownStep * CELL + 'px'; } });
@@ -624,7 +955,14 @@ const meterBuf = new Float32Array(1024);
   requestAnimationFrame(frame);
 })();
 
-refreshAll(); applyAll(G);
+(async function init(){
+  refreshAll(); applyAll(G);
+  await idb.open();
+  let any = false;
+  for (let li = 0; li < LANES.length; li++){ const r = await idb.get('d' + li); if (r){ try { drumBufs[li] = await ctx.decodeAudioData(r.data.slice(0)); S.tracks[T.DR].lanes[li].smp = r.name; any = true; } catch(e){} } }
+  const r = await idb.get('s' + T.SM); if (r){ try { sampleBufs[T.SM] = await ctx.decodeAudioData(r.data.slice(0)); S.tracks[T.SM].smp.name = r.name; any = true; } catch(e){} }
+  if (any) refreshAll();
+})();
 </script>
 </body>
 </html>
