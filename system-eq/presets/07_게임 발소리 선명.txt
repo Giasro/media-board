@@ -3,3 +3,4 @@ Preamp: 5.5 dB
 Filter: ON LSC Fc 150 Hz Gain -4 dB
 Filter: ON PK Fc 2000 Hz Gain 5 dB Q 1.0
 Filter: ON HSC Fc 4000 Hz Gain 6 dB
+VSTPlugin: Library "C:\Program Files\EqualizerAPO\VSTPlugins\LoudMax64.dll"
