@@ -1,0 +1,5 @@
+# Extreme bass (turn the volume down first!)
+Preamp: 0.5 dB
+Filter: ON PK Fc 40 Hz Gain 6 dB Q 1.0
+Filter: ON LSC Fc 60 Hz Gain 10 dB
+Filter: ON PK Fc 250 Hz Gain -4 dB Q 1.0

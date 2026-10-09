@@ -1,0 +1,5 @@
+# My taste (saved from Editor 2026-10-09)
+Preamp: -12.4 dB
+Filter: ON PK Fc 2238.88 Hz Gain 14.3 dB BW Oct 1.435
+Filter: ON LS 12 dB Fc 12942.9 Hz Gain 11.6 dB
+Filter: ON PK Fc 79.62 Hz Gain 19.5 dB BW Oct 1.8917

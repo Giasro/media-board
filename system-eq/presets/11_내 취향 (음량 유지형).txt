@@ -1,0 +1,6 @@
+# My taste, volume-keeping (Preamp +3 dB; lower it if it crackles)
+Preamp: 3 dB
+Filter: ON PK Fc 70 Hz Gain 5 dB Q 0.7
+Filter: ON PK Fc 250 Hz Gain -2 dB Q 1.0
+Filter: ON PK Fc 2200 Hz Gain 3.5 dB Q 0.8
+Filter: ON HSC Fc 12000 Hz Gain -3 dB

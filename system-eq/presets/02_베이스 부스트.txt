@@ -1,0 +1,5 @@
+# Bass boost: low shelf lower, cut mud
+Preamp: 6 dB
+Filter: ON LSC Fc 60 Hz Gain 7 dB
+Filter: ON PK Fc 45 Hz Gain 3 dB Q 1.0
+Filter: ON PK Fc 250 Hz Gain -3 dB Q 0.9

@@ -1,0 +1,6 @@
+# Voice clarity
+Preamp: 7.5 dB
+Filter: ON HP Fc 90 Hz
+Filter: ON PK Fc 250 Hz Gain -4 dB Q 1.0
+Filter: ON PK Fc 3000 Hz Gain 5 dB Q 1.0
+Filter: ON HSC Fc 8000 Hz Gain 3 dB
